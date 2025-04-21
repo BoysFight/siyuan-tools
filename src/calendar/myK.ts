@@ -195,7 +195,17 @@ export async function runclick(evt) {
 }
 
 export function formatDateTime(date: Date) {
-    const adjustedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000); // 加8个小时
+    // 先调整时区
+    const adjustedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+    
+    // 获取分钟数并调整为最近的5分钟倍数
+    const minutes = adjustedDate.getMinutes();
+    const roundedMinutes = Math.round(minutes / 5) * 5;
+    
+    // 设置调整后的分钟数
+    adjustedDate.setMinutes(roundedMinutes);
+    adjustedDate.setSeconds(0);
+    
     return adjustedDate.toISOString().slice(0, 16); // 格式化为 YYYY-MM-DDTHH:mm
 }
 
