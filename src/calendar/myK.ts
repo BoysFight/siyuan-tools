@@ -197,15 +197,15 @@ export async function runclick(evt) {
 export function formatDateTime(date: Date) {
     // 先调整时区
     const adjustedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-    
-    // 获取分钟数并调整为最近的5分钟倍数
+
+    // 获取分钟数并调整为最近的15分钟倍数
     const minutes = adjustedDate.getMinutes();
-    const roundedMinutes = Math.round(minutes / 5) * 5;
-    
+    const roundedMinutes = Math.round(minutes / 15) * 15;
+
     // 设置调整后的分钟数
     adjustedDate.setMinutes(roundedMinutes);
     adjustedDate.setSeconds(0);
-    
+
     return adjustedDate.toISOString().slice(0, 16); // 格式化为 YYYY-MM-DDTHH:mm
 }
 
@@ -275,8 +275,8 @@ export async function globalOpen2() {
 
 
 // 新增过滤周期事件的函数
-export function filterRecurringEvents(events: KBCalendarEvent[], 
-    options = { 
+export function filterRecurringEvents(events: KBCalendarEvent[],
+    options = {
         futureOccurrences: 3,  // Show 3 future occurrences by default
         pastOccurrences: 1,    // Show 1 past occurrence by default
         excludeStatuses: []     // 需要过滤掉的状态数组，例如 ['完成']
@@ -306,15 +306,15 @@ export function filterRecurringEvents(events: KBCalendarEvent[],
         const sortedEvents = events
             .filter(event => !options.excludeStatuses?.includes(event.extendedProps?.status))
             .sort((a, b) => a.range.start.getTime() - b.range.start.getTime());
-        
+
         // 找到当前位置
         const currentIndex = sortedEvents.findIndex(e => e.range.start > now);
         const validCurrentIndex = currentIndex === -1 ? sortedEvents.length : currentIndex;
-        
+
         // 在指定范围内选择事件
         const startIndex = Math.max(validCurrentIndex - options.pastOccurrences, 0);
         const endIndex = Math.min(validCurrentIndex + options.futureOccurrences, sortedEvents.length);
-        
+
         // 添加筛选后的周期事件
         sortedEvents.slice(startIndex, endIndex).forEach(e => {
             if (!processedEvents.has(e.publicId)) {
