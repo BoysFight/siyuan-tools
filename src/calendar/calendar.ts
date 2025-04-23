@@ -66,8 +66,8 @@ export async function run(
     let currentSlotDuration = defaultSlotDuration;
 
     if (filterViewId.includes('lifelog')) {
-        lastSavedLifelogSlotDuration = savedSlotDuration 
-            ? validateTimeFormat(savedSlotDuration, defaultSlotDuration) 
+        lastSavedLifelogSlotDuration = savedSlotDuration
+            ? validateTimeFormat(savedSlotDuration, defaultSlotDuration)
             : defaultSlotDuration;
         currentSlotDuration = lastSavedLifelogSlotDuration;
     } else {
@@ -549,7 +549,7 @@ export async function run(
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         // 根据 filterViewId 动态设置选中状态
-                        checkbox.checked = filterViewId.includes('lifelog'); 
+                        checkbox.checked = filterViewId.includes('lifelog');
                         checkbox.className = 'view-filter-checkbox';
 
                         const label = document.createElement('span');
@@ -683,15 +683,19 @@ export async function run(
                         calendar.setOption('slotDuration', defaultSlotDuration);
                     } else {
                         filterViewId.push('lifelog');
-                        // 加载 lifelog 视图，设置时间槽间隔为保存的值或默认值
-                        calendar.setOption('slotDuration', lastSavedLifelogSlotDuration);
+                        // 验证时间格式
+                        if (validateTimeFormat(lastSavedLifelogSlotDuration)) {
+                            calendar.setOption('slotDuration', lastSavedLifelogSlotDuration);
+                        } else {
+                            console.warn('Invalid time format, using default duration');
+                        }
                     }
-    
+
                     // 保存配置
                     moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
                     moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
                     moduleInstances['M_calendar'].calConfig.save();
-    
+
                     await calendar.refetchEvents();
                     await refreshKanban();
                 }
@@ -764,8 +768,8 @@ export async function run(
                 /////////////////////Lifelog////////////////////////
                 try {
                     const showLifelogEvents = filterViewId.includes('lifelog');
-                    if (showLifelogEvents) { 
-                        const lifelogEvents = await LifelogView.getLifelogEvents(info.start, info.end);     
+                    if (showLifelogEvents) {
+                        const lifelogEvents = await LifelogView.getLifelogEvents(info.start, info.end);
                         console.log('是否显示 Lifelog 事件:', showLifelogEvents);
                         console.log('当前过滤视图:', filterViewId);
                         console.log('当前视图类型:', calendar.view.type);
@@ -888,7 +892,7 @@ export async function run(
 
             if (source === 'lifelog') {
                 const type = info.event.extendedProps.logType || '固定';
-                colorConfig = lifelogColors[type] || lifelogColors['固定'];        
+                colorConfig = lifelogColors[type] || lifelogColors['固定'];
             } else {
                 const priority = info.event.extendedProps.priority || '无';
                 colorConfig = getCategoryColor(priority);
