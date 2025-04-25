@@ -5,6 +5,7 @@ export const defaultSettings = {
     "cal-get-url": "Click Button",
     "cal-reset": "Click Button",
     "cal-auto-update": true,
+    "cal-auto-syncing-update": false,
     "cal-hand-update": true,
     "cal-view-night": false,
     "cal-hand": "ces",
@@ -50,6 +51,7 @@ export const defaultSettings = {
     "cal-slot-min-time": "00:00:00",
     "cal-slot-max-time": "24:00:00",
     "cal-snap-duration": "00:30:00",
+    "cal-event-color": true,
     // 同步模块
     "sync-enable": false,
     "sync-url": "http://localhost:8080",
@@ -64,10 +66,14 @@ export const defaultSettings = {
     "handwriting-enable": false,
     "tl-draw-create-note-id": null,
     // LifeLog模块
-    "lifelog-enable": true,
+    "lifelog-enable": false,
     "lifelog-debug": false,  // 是否启用调试日志
     "lifelog-paths": ["/daily", "/journals/"],  // 监听的文档路径
     "lifelog-time-format": "HH:mm",  // 时间格式
+    //https://github.com/loonghfut/siyuan-steve-tools/issues/44
+    "SelectTOPics": "",  
+    //白板配置
+    "isGridMode": false, // 是否开启网格模式
 };
 
 export function getSettings() {

@@ -18,9 +18,11 @@ import * as myF from './myF';
 import { showMessage } from 'siyuan';
 import { createFloatingCalendar } from './createFloatingCalendar';
 import { updateAttrViewCell_pro } from '@/api';
-import { getCategoryColor, lifelogColors} from '../styles/colors';
 
+//审查ok
+import { getCategoryColor, lifelogColors } from '../lifelog/styles/colors';
 import { LifelogView } from './lifelog-view';
+//审查ok
 
 export let isFilter = true;
 export let OUTcalendar: Calendar;
@@ -34,6 +36,8 @@ export let viewName = "";
 export let viewId = "";
 // export const Calendars_pro:{Calendar:Calendar,id:string}[] = []; //TODO:后面优化时用
 // let ishandrefetchEvents = true;
+//用于保存原始的时间槽间隔
+let lastSavedLifelogSlotDuration: string;
 export async function update_av_ids() {
     av_ids = await moduleInstances['M_calendar'].getAVreferenceid();
 }
@@ -45,14 +49,12 @@ export async function init_viewValue(data: { viewId: string, viewName: string })
     filterViewId = data.viewId ? data.viewId.split(',') : [];
 }
 
-// 新增变量，用于保存原始的时间槽间隔
-let lastSavedLifelogSlotDuration: string;
 
 export async function run(
     id: string,
     initialView = 'dayGridMonth',
     S_viewID = "",
-    cleft = 'prev,next today viewFilter lifelogToggle',
+    cleft = 'prev,next today viewFilter',
     cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban',
     ccenter = 'title',
 ) {
@@ -114,15 +116,8 @@ export async function run(
         const newHours = Math.floor(newTotalMinutes / 60);
         const newMinutes = Math.round(newTotalMinutes % 60);
         const newSlotDuration = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}:00`;
-
         // 更新日历的 slotDuration
         calendar.setOption('slotDuration', newSlotDuration);
-        if (filterViewId.includes('lifelog')) {
-            // 仅在有 lifelog 视图时更新 lastSavedLifelogSlotDuration 并保存
-            lastSavedLifelogSlotDuration = newSlotDuration;
-            moduleInstances['M_calendar'].calConfig.set('slotDuration', newSlotDuration);
-            moduleInstances['M_calendar'].calConfig.save();
-        }
     });
 
     const calendar = new Calendar(calendarEl, {
@@ -142,7 +137,7 @@ export async function run(
         editable: true,
         nowIndicator: true,
         firstDay: settingdata["cal-week-start"] === "sunday" ? 0 : 1,
-        slotDuration: currentSlotDuration,
+        slotDuration: validateTimeFormat(settingdata["cal-slot-duration"], '01:00:00'),
         slotMinTime: validateTimeFormat(settingdata["cal-slot-min-time"], '00:00:00'),
         slotMaxTime: validateTimeFormat(settingdata["cal-slot-max-time"], '24:00:00'),
         snapDuration: validateTimeFormat(settingdata["cal-snap-duration"], '00:15:00'),
@@ -703,7 +698,7 @@ export async function run(
         },
         // 将 lifelogToggle 按钮添加到工具栏
         headerToolbar: {
-            left: updatedCleft,
+            left: cleft,
             center: ccenter,
             right: cright
         },
@@ -768,7 +763,7 @@ export async function run(
                 /////////////////////Lifelog////////////////////////
                 try {
                     const showLifelogEvents = filterViewId.includes('lifelog');
-                    if (showLifelogEvents) {
+                    if (showLifelogEvents && moduleInstances['M_lifelog']?.enabled) {
                         const lifelogEvents = await LifelogView.getLifelogEvents(info.start, info.end);
                         console.log('是否显示 Lifelog 事件:', showLifelogEvents);
                         console.log('当前过滤视图:', filterViewId);
@@ -896,7 +891,7 @@ export async function run(
             } else {
                 const priority = info.event.extendedProps.priority || '无';
                 colorConfig = getCategoryColor(priority);
-                info.el.style.borderLeft = `2px solid ${colorConfig.border}`;
+                // info.el.style.borderLeft = `2px solid ${colorConfig.border}`;
             }
             // 应用颜色
             info.el.style.backgroundColor = colorConfig.background;
@@ -921,22 +916,22 @@ export async function run(
                 if (info && info.event && info.event.extendedProps && info.event.extendedProps.status === '完成') {
                     // 应用完成状态的样式
                     info.el.style.textDecoration = 'line-through';
+                    if (settingdata["cal-event-color"]) {
+                        try {
+                            // 调暗背景色
+                            const uniqueId = info.event.extendedProps.priority as string || '无';
+                            const hash = Array.from(uniqueId).reduce((acc, char) => {
+                                return char.charCodeAt(0) + ((acc << 5) - acc);
+                            }, 0);
+                            const [backgroundColor] = getColors(Math.abs(hash));
 
-                    try {
-                        // 调暗背景色
-                        const uniqueId = info.event.id || info.event.title;
-                        const hash = Array.from(uniqueId).reduce((acc, char) => {
-                            return char.charCodeAt(0) + ((acc << 5) - acc);
-                        }, 0);
-                        const [backgroundColor] = getColors(Math.abs(hash));
-
-                        // 将背景色转换为 RGBA 格式并降低不透明度
-                        info.el.style.backgroundColor = backgroundColor.replace('hsl', 'hsla').replace(')', ', 0.5)');
-                    } catch (colorError) {
-                        console.error('背景色处理错误:', colorError);
-                        console.log('事件数据:', info.event);
+                            // 将背景色转换为 RGBA 格式并降低不透明度
+                            info.el.style.backgroundColor = backgroundColor.replace('hsl', 'hsla').replace(')', ', 0.5)');
+                        } catch (colorError) {
+                            console.error('背景色处理错误:', colorError);
+                            console.log('事件数据:', info.event);
+                        }
                     }
-
                     try {
                         // 应用其他样式
                         const titleEl = info.el.querySelector('.fc-event-title');
@@ -1064,7 +1059,7 @@ function displayStatusDropZone(calendarEl: HTMLElement, info) {
             statusDropZone.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
         }
     } else {
-        statusDropZone.innerHTML = '<div>拖放到此处将事件标记为"归档"</div>';
+        statusDropZone.innerHTML = '<div>拖放到标题处将事件标记为"归档"</div>';
         statusDropZone.style.backgroundColor = 'rgba(0, 128, 0, 0.2)';
     }
 

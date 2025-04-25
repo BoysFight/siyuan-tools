@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { moduleInstances } from "./index";
+    import { frontEnd, moduleInstances } from "./index";
     import { showMessage } from "siyuan";
     import { onMount } from "svelte";
     import SettingPanel from "@/libs/components/setting-panel.svelte";
@@ -268,9 +268,18 @@
                     type: "checkbox",
                     title: "自动更新ics文件",
                     description:
-                        "启用后再同步触发后3s自动更新ics文件",
+                        "启用后每次修改日程触发自动更新ics文件",
                     key: "cal-auto-update",
                     value: settings["cal-auto-update"],
+                },
+                {
+                    //7
+                    type: "checkbox",
+                    title: "同步更新ics文件",
+                    description:
+                        "启用后每次同步完后触发自动更新ics文件",
+                    key: "cal-auto-syncing-update",
+                    value: settings["cal-auto-syncing-update"],
                 },
                 {
                     //8
@@ -296,6 +305,14 @@
                         "s3-diy": "s3-diy(自定义桶)(推荐)",
                         webdav: "WebDAV(通用协议)",
                     },
+                },
+                {
+                    //14
+                    type: "textinput",
+                    title: "触发上传ics文件的思源平台",
+                    description: `当前平台：${frontEnd} （不填则全平台触发）`,
+                    key: "SelectTOPics",
+                    value: settings["SelectTOPics"],
                 },
                 {
                     //14
@@ -442,6 +459,13 @@
                         sunday: "周日",
                     },
                 },
+                {
+                    type: "checkbox",
+                    title: "事件颜色样式切换",
+                    description: "启用后事件颜色样式切换",
+                    key: "cal-event-color",
+                    value: settings["cal-event-color"],
+                },
             ],
         },
         {
@@ -566,30 +590,19 @@
                     ),
                 },
                 {
+                    type: "checkbox",
+                    title: "启用画板网格背景",
+                    description: "启用后画板默认会有网格背景",
+                    key: "isGridMode",
+                    value: settings["isGridMode"],
+                },
+                {
                     type: "custom", // 自定义组件类型
                     title: "画板备份管理",
                     description: "管理所有画板的备份文件",
                     key: "tldraw-backup-manager",
                     component: "TldrawBackupManager", // 指定组件名称
                     value: "", // 不需要值
-                },
-            ],
-        },
-        {
-            name: "✨敬请期待。。",
-            items: [
-                {
-                    type: "button",
-                    title: "button",
-                    description: "This is a button",
-                    key: "e",
-                    value: "Click Button",
-                    button: {
-                        label: "Click Me",
-                        callback: () => {
-                            showMessage("Hello, world!");
-                        },
-                    },
                 },
             ],
         },
@@ -611,11 +624,30 @@
                     value: settings["lifelog-debug"],
                 },
                 {
-                    type: "textinput",
-                    title: "监听路径",
-                    description: "多个路径用英文逗号分隔，如: /daily/,/journals/",
-                    key: "lifelog-paths",
-                    value: settings["lifelog-paths"],
+                    type: "hint",
+                    title: "感谢",
+                    description:
+                        "此功能由 BoysFight PR贡献",
+                    key: "lifelog-hint",
+                    value: "",
+                },
+            ],
+        },
+        {
+            name: "✨敬请期待。。",
+            items: [
+                {
+                    type: "button",
+                    title: "button",
+                    description: "This is a button",
+                    key: "e",
+                    value: "Click Button",
+                    button: {
+                        label: "Click Me",
+                        callback: () => {
+                            showMessage("Hello, world!");
+                        },
+                    },
                 },
             ],
         },
@@ -732,14 +764,14 @@
         日程管理: {
             基础设置: 7,
             高级设置: 8,
-            ics设置: 6,
-            ics分享: 8,
+            ics设置: 7,
+            ics分享: 9,
             订阅日历: 6,
             视图设置: 5,
             // 不限制
         },
         "画板": {
-            基本设置: 2, // 复选框和选择框
+            基本设置: 3, // 复选框和选择框
             备份管理: 1, // 备份管理组件
         },
         // "docker同步感知": {

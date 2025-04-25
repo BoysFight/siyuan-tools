@@ -1,4 +1,4 @@
-import steveTools, { settingdata } from "@/index";
+import steveTools, { frontEnd, settingdata } from "@/index";
 import { createEvents, EventAttributes } from 'ics';
 import { RRule } from 'rrule';
 import * as api from "@/api"
@@ -172,14 +172,14 @@ export class M_calendar {
                 <div id="calendar-${id}" class="cal-dock-container" ></div>
                 `;
                 setTimeout(async () => {
-                    D_calendar_day = await run(id, 'timeGridDay', '', 'title', 'today,lifelogToggle,viewFilter,prev,next', '');
+                    D_calendar_day = await run(id, 'timeGridDay', '', 'title', 'today,viewFilter,prev,next', '');
                 }, 100);
             },
         });
 
 
         if (this_settingdata["cal-auto-update"] == true) {
-            steveTools.outlog("自动更新日历文件");
+            // steveTools.outlog("自动更新日历文件");
             //监听
             siyuan.ws.ws.addEventListener('message', async (e) => {
                 if (!islisten) {
@@ -187,28 +187,57 @@ export class M_calendar {
                 }
                 // if (1) { return; }
                 const msg = JSON.parse(e.data);
-                if (msg.cmd === "syncing") {
+                if (msg.cmd === "transactions") {
+                    steveTools.outlog(msg);
+                    if (msg.data[0].doOperations[0].action === "updateAttrViewCell") {//BUG:同时添加会崩溃，无法稳定复现
+                        // steveTools.outlog("更新了一个属性视图");
+                        const avids = await this.getAVreferenceid();
+                        //加上周期
+                        const avids_zq = await this.getAVreferenceid('周期');
+                        steveTools.outlog(avids);
+                        if (avids.includes(msg.data[0].doOperations[0].avID) || avids_zq.includes(msg.data[0].doOperations[0].avID)) {
+                            steveTools.outlog("更新了日程信息");
+                            //延时执行
+                            if (!this.isUpdating) {
+                                this.isUpdating = true;
+                                setTimeout(async () => {
+                                    await this.getEventsFromSiYuanDatabase();
+                                    console.log("更新日历文件<2>");
+                                    this.isUpdating = false;
+                                }, 10000);
+                            }
+                        } else {
+                            // steveTools.outlog("avID 不在 avids 数组中");
+                        }
+                        steveTools.outlog("更新了日程信息");
+                        //延时执行
+                        if (!this.isUpdating) {
+                            this.isUpdating = true;
+                            setTimeout(async () => {
+                                await this.getEventsFromSiYuanDatabase();
+                                console.log("更新日历文件<2>");
+                                this.isUpdating = false;
+                            }, 10000);
+                        }
+                    }
                     // steveTools.outlog(msg);
-                    // if (msg.data[0].doOperations[0].action === "updateAttrViewCell") {//BUG:同时添加会崩溃，无法稳定复现
-                    //     // steveTools.outlog("更新了一个属性视图");
-                    //     const avids = await this.getAVreferenceid();
-                    //     //加上周期
-                    //     const avids_zq = await this.getAVreferenceid('周期');
-                    //     steveTools.outlog(avids);
-                    //     if (avids.includes(msg.data[0].doOperations[0].avID) || avids_zq.includes(msg.data[0].doOperations[0].avID)) {
-                    //         steveTools.outlog("更新了日程信息");
-                    //         //延时执行
-                    //         if (!this.isUpdating) {
-                    //             this.isUpdating = true;
-                    //             setTimeout(async () => {
-                    //                 await this.getEventsFromSiYuanDatabase();
-                    //                 console.log("更新日历文件<2>");
-                    //                 this.isUpdating = false;
-                    //             }, 10000);
-                    //         }
-                    //     } else {
-                    //         // steveTools.outlog("avID 不在 avids 数组中");
-                    //     }
+                }
+            });
+            //// 暂时不用
+            // 每15分钟调用一次await this.getEventsFromSiYuanDatabase()
+            // setInterval(async () => {
+            //     await this.getEventsFromSiYuanDatabase()
+            //     steveTools.outlog("自动更新日历文件<1>");
+            // }, 900000);
+        }
+        if (this_settingdata["cal-auto-syncing-update"] == true) {
+            siyuan.ws.ws.addEventListener('message', async (e) => {
+                if (!islisten) {
+                    return;
+                }
+                // if (1) { return; }
+                const msg = JSON.parse(e.data);
+                if (msg.cmd === "syncing") {
                     steveTools.outlog("更新了日程信息");
                     //延时执行
                     if (!this.isUpdating) {
@@ -217,18 +246,10 @@ export class M_calendar {
                             await this.getEventsFromSiYuanDatabase();
                             console.log("更新日历文件<2>");
                             this.isUpdating = false;
-                        }, 3000);
+                        }, 2000);
                     }
-
                 }
-                // steveTools.outlog(msg);
             });
-
-            //每15分钟调用一次await this.getEventsFromSiYuanDatabase()
-            // setInterval(async () => {
-            //     await this.getEventsFromSiYuanDatabase()
-            //     steveTools.outlog("自动更新日历文件<1>");
-            // }, 900000);
         }
         //解决 https://github.com/loonghfut/siyuan-steve-tools/issues/3
         //实现看板实时更新
@@ -247,20 +268,12 @@ export class M_calendar {
                     if (msg?.data?.[0]?.doOperations?.[0]?.avID &&
                         msg?.data?.[0]?.doOperations?.[0]?.data?.mSelect?.[0]?.content &&
                         msg?.data?.[0]?.doOperations?.[0]?.rowID) {
-                        //判断是否为事件（判断是否是日程数据库的事件）且是否修改的是状态列
-                        if (this.av_ids.map(item => item.id).includes(msg.data[0].doOperations[0].avID) ) {
+                        //判断是否为事件（判断是否是日程数据库的事件）
+                        if (this.av_ids.map(item => item.id).includes(msg.data[0].doOperations[0].avID)) {
                             const status = msg.data[0]?.doOperations[0]?.data?.mSelect[0]?.content;
                             const blockID = msg.data[0]?.doOperations[0]?.rowID;
-                            console.log("status", status, blockID, myF.statusMap[status])
-
-                            if (myF.statusMap[status] && !this.isSettingAttrs) {
-                                this.isSettingAttrs = true;
-                                try {
-                                    await api.setBlockAttrs(blockID, { "custom-st-event": myF.statusMap[status] });
-                                } finally {
-                                    this.isSettingAttrs = false;
-                                }
-                            }
+                            console.log("status", status, blockID);
+                            await api.setBlockAttrs(blockID, { "custom-st-event": myF.statusMap[status] });//TODO优化，防止二次触发
                         }
                     }
                     // }
@@ -270,7 +283,7 @@ export class M_calendar {
                     const data = msg.data[0].doOperations[0].data;
                     if (data.startsWith('<div data-marker')) {
                         // console.log('asd', data);
-                        // refreshKanban();
+                        refreshKanban();
                         console.log("update");
                     }
                 }
@@ -284,7 +297,12 @@ export class M_calendar {
             run("1");
         }
         //
-        await this.shareicsinit();
+        //配置实现只在某一端上传ics
+        const selectToPics = this_settingdata["SelectTOPics"];
+        if (!selectToPics || selectToPics === frontEnd) {
+            await this.shareicsinit();
+        }
+
         if (this_settingdata["cal-qq-email"] && this_settingdata["cal-qq-code"] && this_settingdata["cal-qq-enable"]) {
             this.QQCalDAVClient = new CalDAVClient(this_settingdata["cal-qq-email"], this_settingdata["cal-qq-code"]);
             await this.QQCalDAVClient.init();
@@ -731,34 +749,36 @@ export class M_calendar {
                 //TODO:周期事件的周期处理改为数据库单选
                 await this.addEventToGlobal(result_zq);
             }
-
-
-
             await this.uploadAllEventsToFile(eventsPath);
             await this.generateICSFromEventsFile(eventsPath, calendarpath);
-            if (settingdata["cal-share"] === "alist") {
-                await this.alistPlugin.upload_ics();
-                console.log("alist_ics");
-            }
-            if (settingdata["cal-share"] === "s3") {
-                const ics = await api.getFileBlob(calendarpath)
-                const file = new File([ics], "calendar.ics", { type: "text/calendar" });
-                await this.s3Client.uploadFile(calendarpath2, file);
-            }
-            if (settingdata["cal-share"] === "s3-diy") {
-                const ics = await api.getFileBlob(calendarpath)
-                const file = new File([ics], "calendar.ics", { type: "text/calendar" });
-                await this.s3Client.uploadFile(calendarpath2, file);
-            }
-            if (settingdata["cal-share"] === "webdav") {
-                const ics = await api.getFileBlob(calendarpath)
-                const file = new File([ics], "calendar.ics", { type: "text/calendar" });
-                await this.webdavClient.uploadFile(settingdata["cal-url"] || "1.ics", file);//特殊处理，不自动建文件夹防止权限报错
+            
+            const selectToPics = this_settingdata["SelectTOPics"];
+            if (!selectToPics || selectToPics === frontEnd) {
+                if (settingdata["cal-share"] === "alist") {
+                    await this.alistPlugin.upload_ics();
+                    console.log("alist_ics");
+                }
+                if (settingdata["cal-share"] === "s3") {
+                    const ics = await api.getFileBlob(calendarpath)
+                    const file = new File([ics], "calendar.ics", { type: "text/calendar" });
+                    await this.s3Client.uploadFile(calendarpath2, file);
+                }
+                if (settingdata["cal-share"] === "s3-diy") {
+                    const ics = await api.getFileBlob(calendarpath)
+                    const file = new File([ics], "calendar.ics", { type: "text/calendar" });
+                    await this.s3Client.uploadFile(calendarpath2, file);
+                }
+                if (settingdata["cal-share"] === "webdav") {
+                    const ics = await api.getFileBlob(calendarpath)
+                    const file = new File([ics], "calendar.ics", { type: "text/calendar" });
+                    await this.webdavClient.uploadFile(settingdata["cal-url"] || "1.ics", file);//特殊处理，不自动建文件夹防止权限报错
+                }
             }
         } catch (error) {
             console.error('生成日历文件时发生错误:', error);
             throw error;
         }
+
     }
 
 
