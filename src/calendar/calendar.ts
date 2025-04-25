@@ -75,7 +75,7 @@ export async function run(
     } else {
         currentSlotDuration = defaultSlotDuration;
     }
-    let updatedCleft = cleft;
+
 
     let calendarEl: HTMLElement;
     if (id === "1") {
@@ -118,6 +118,12 @@ export async function run(
         const newSlotDuration = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}:00`;
         // 更新日历的 slotDuration
         calendar.setOption('slotDuration', newSlotDuration);
+        if (filterViewId.includes('lifelog')) {
+            // 仅在有 lifelog 视图时更新 lastSavedLifelogSlotDuration 并保存
+            lastSavedLifelogSlotDuration = newSlotDuration;
+            moduleInstances['M_calendar'].calConfig.set('slotDuration', newSlotDuration);
+            moduleInstances['M_calendar'].calConfig.save();
+        }
     });
 
     const calendar = new Calendar(calendarEl, {
@@ -137,7 +143,7 @@ export async function run(
         editable: true,
         nowIndicator: true,
         firstDay: settingdata["cal-week-start"] === "sunday" ? 0 : 1,
-        slotDuration: validateTimeFormat(settingdata["cal-slot-duration"], '01:00:00'),
+        slotDuration: currentSlotDuration,
         slotMinTime: validateTimeFormat(settingdata["cal-slot-min-time"], '00:00:00'),
         slotMaxTime: validateTimeFormat(settingdata["cal-slot-max-time"], '24:00:00'),
         snapDuration: validateTimeFormat(settingdata["cal-snap-duration"], '00:15:00'),
@@ -891,7 +897,7 @@ export async function run(
             } else {
                 const priority = info.event.extendedProps.priority || '无';
                 colorConfig = getCategoryColor(priority);
-                // info.el.style.borderLeft = `2px solid ${colorConfig.border}`;
+                info.el.style.borderLeft = `2px solid ${colorConfig.border}`;
             }
             // 应用颜色
             info.el.style.backgroundColor = colorConfig.background;

@@ -58,7 +58,11 @@ export class M_calendar {
                 let calendar: Calendar
                 this.element.innerHTML = `
                 <div  id='calendarfu-${id}' ><div id='calendar-${id}' ></div></div>`;
-                calendar = await run(id);
+                let cleftbar = 'today,viewFilter,prev,next';
+                if (this_settingdata["lifelog-enable"]) {
+                    cleftbar = 'today viewFilter lifelogToggle,prev,next';
+                }
+                calendar = await run(id, 'timeGridWeek', '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
                 this.data.id = id;
                 calendarinstance.set(id, calendar);
             },
@@ -172,7 +176,11 @@ export class M_calendar {
                 <div id="calendar-${id}" class="cal-dock-container" ></div>
                 `;
                 setTimeout(async () => {
-                    D_calendar_day = await run(id, 'timeGridDay', '', 'title', 'today,viewFilter,prev,next', '');
+                    let crightbar = 'today,viewFilter,prev,next';
+                    if (this_settingdata["lifelog-enable"]) {
+                        crightbar = 'today,lifelogToggle,viewFilter,prev,next';
+                    }
+                    D_calendar_day = await run(id, 'timeGridDay', '', 'title', crightbar, '');
                 }, 100);
             },
         });
@@ -751,7 +759,7 @@ export class M_calendar {
             }
             await this.uploadAllEventsToFile(eventsPath);
             await this.generateICSFromEventsFile(eventsPath, calendarpath);
-            
+
             const selectToPics = this_settingdata["SelectTOPics"];
             if (!selectToPics || selectToPics === frontEnd) {
                 if (settingdata["cal-share"] === "alist") {

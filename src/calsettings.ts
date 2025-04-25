@@ -51,7 +51,7 @@ export const defaultSettings = {
     "cal-slot-min-time": "00:00:00",
     "cal-slot-max-time": "24:00:00",
     "cal-snap-duration": "00:30:00",
-    "cal-event-color": true,
+    "cal-event-color": false,
     // 同步模块
     "sync-enable": false,
     "sync-url": "http://localhost:8080",
@@ -71,7 +71,7 @@ export const defaultSettings = {
     "lifelog-paths": ["/daily", "/journals/"],  // 监听的文档路径
     "lifelog-time-format": "HH:mm",  // 时间格式
     //https://github.com/loonghfut/siyuan-steve-tools/issues/44
-    "SelectTOPics": "",  
+    "SelectTOPics": "",
     //白板配置
     "isGridMode": false, // 是否开启网格模式
 };
