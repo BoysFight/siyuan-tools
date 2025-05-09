@@ -1,46 +1,94 @@
 import { settingdata } from "@/index";
 
-// 基础颜色配置
-const baseColors = {
-    '高': {
-        base: 'rgb(232, 138, 135)',  // 柔和的红色
-        // 降低透明度以增加与边框的区分度
-        background: 'rgba(232, 138, 135, 0.9)'
-    },
-    '中': {
-        // 保持原有的注释
-        base: 'rgb(242, 201, 76)',  // 温暖的黄色
-        background: 'rgba(242, 201, 76, 0.9)'
-    },
-    '低': {
-        base: 'rgb(79, 147, 209)',  // 沉稳的蓝色
-        background: 'rgba(79, 147, 209, 0.9)'
-    },
-    '无': {
-        base: 'rgb(160, 174, 192)',  // 优雅的灰色
-        background: 'rgba(160, 174, 192, 0.9)'
-    }
-};
 
 // 导出颜色生成函数
 export function getCategoryColor(priority: string = '无') {
-    const colorBase = baseColors[priority] || baseColors['无'];
     if (settingdata["cal-event-color"]) {
+        // 使用黄金角算法生成随机颜色
         const hash = Array.from(priority).reduce((acc, char) => {
             return char.charCodeAt(0) + ((acc << 5) - acc);
         }, 0);
-        const [backgroundColor, textColor] = getColors(Math.abs(hash));
+        const [backgroundColor, textColor, borderColor] = getRandomColors(Math.abs(hash));
         return {
-            // border: colorBase.base,
+            border: borderColor,
+            background: backgroundColor,
+            text: textColor
+        };
+    } else {
+        // 使用预定义的颜色映射，参考滴答清单的配色
+        const hueMap = {
+            "高": 0,      // 红色
+            "中": 35,     // 橙色
+            "低": 200,    // 蓝色
+            "无": 0       // 灰色（使用0饱和度）
+        };
+
+        // 为不同优先级设置不同的饱和度和亮度
+        const colorParams = {
+            "高": { s: 80, l: 70 },    // 柔和的红色，降低饱和度，提高亮度
+            "中": { s: 80, l: 70 },    // 温暖的橙色
+            "低": { s: 75, l: 75 },    // 柔和的蓝色
+            "无": { s: 0, l: 75 }      // 中性灰色
+        };
+
+        const hue = hueMap[priority] || hueMap['无'];
+        const params = colorParams[priority] || colorParams['无'];
+        const [backgroundColor, textColor, borderColor] = getFixedColors(hue, priority === '无', params.s, params.l);
+        return {
+            border: borderColor,
             background: backgroundColor,
             text: textColor
         };
     }
-    return {
-        // border: colorBase.base,
-        background: colorBase.background,
-        text: 'var(--b3-theme-on-background)'
-    };
+}
+
+// 使用黄金角算法生成随机颜色
+function getRandomColors(index: number): string[] {
+    const hue = index * 137.508; // 黄金角近似值
+    return generateColors(hue);
+}
+
+// 根据固定色相生成颜色
+function getFixedColors(hue: number, isGray: boolean = false, saturation: number = 75, lightness: number = 75): string[] {
+    if (isGray) {
+        // 对于灰色，使用0饱和度
+        return [
+            `hsl(0,0%,75%)`,            // 背景色（浅灰色）
+            "black",                     // 文字颜色
+            `hsl(0,0%,45%)`             // 边框颜色（深灰色）
+        ];
+    }
+
+    const rgb = hsl2rgb(hue, saturation/100, lightness/100);
+
+    // 生成边框颜色：使用相同色相但更深的颜色
+    const borderSaturation = `${Math.min(saturation + 10, 100)}%`;
+    const borderLightness = `${Math.max(lightness - 20, 25)}%`;
+
+    const textColor = colourIsLight(rgb[0], rgb[1], rgb[2]) ? "black" : "white";
+
+    return [
+        `hsl(${hue},${saturation}%,${lightness}%)`,           // 背景色
+        textColor,                                            // 文字颜色
+        `hsl(${hue},${borderSaturation},${borderLightness})`  // 边框颜色
+    ];
+}
+
+// 统一的颜色生成逻辑
+function generateColors(hue: number): string[] {
+    const rgb = hsl2rgb(hue, 0.75, 0.75);
+
+    // 生成边框颜色：使用相同色相但更深的颜色
+    const borderSaturation = '85%';
+    const borderLightness = '45%';
+
+    const textColor = colourIsLight(rgb[0], rgb[1], rgb[2]) ? "black" : "white";
+
+    return [
+        `hsl(${hue},75%,75%)`,           // 背景色
+        textColor,                        // 文字颜色
+        `hsl(${hue},${borderSaturation},${borderLightness})`  // 边框颜色
+    ];
 }
 
 // 保留原有的 lifelogColors 配置
@@ -117,21 +165,6 @@ export const lifelogColors = {
     }
 };
 
-
-function getColors(index: number): string[] {
-    const hue = index * 137.508; // use golden angle approximation // Copied from https://stackoverflow.com/a/20129594/13231742
-    const rgb = hsl2rgb(hue, 0.75, 0.75);
-
-    let textColor: string;
-
-    if (colourIsLight(rgb[0], rgb[1], rgb[2])) {
-        textColor = "black";
-    } else {
-        textColor = "white";
-    }
-
-    return [`hsl(${hue},75%,75%)`, textColor];
-}
 
 function hsl2rgb(h: number, s: number, l: number): number[] { // Copied from https://stackoverflow.com/a/54014428/13231742
     let a = s * Math.min(l, 1 - l);

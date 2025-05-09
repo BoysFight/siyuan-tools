@@ -60,7 +60,7 @@ export class M_calendar {
                 <div  id='calendarfu-${id}' ><div id='calendar-${id}' ></div></div>`;
                 let cleftbar = 'today,viewFilter,prev,next';
                 if (this_settingdata["lifelog-enable"]) {
-                    cleftbar = 'today viewFilter lifelogToggle,prev,next';
+                    cleftbar = 'today viewFilter lifelogToggle prev,next';
                 }
                 calendar = await run(id, 'timeGridWeek', '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
                 this.data.id = id;
