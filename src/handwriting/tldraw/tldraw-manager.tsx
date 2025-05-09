@@ -17,7 +17,7 @@ import {
 import '@tldraw/tldraw/tldraw.css';
 import '../custom-tldraw.css';
 import { getAssetUrls } from '@tldraw/assets/selfHosted'
-import { initCardsWithBlockIds } from './CardShape/card-shape-migrations';
+import { cardShapeMigrations, initCardsWithBlockIds } from './CardShape/card-shape-migrations';
 import { createTLStore, getSnapshot, loadSnapshot, throttle } from '@tldraw/tldraw';
 import * as api from '@/api';
 import { SlideShapeUtil } from './SlideShape/SlideShapeUtil';
@@ -25,14 +25,16 @@ import { SlideShapeTool } from './SlideShape/SlideShapeTool';
 import { ICardShape } from './CardShape/card-shape-types';
 import { showMessage } from 'siyuan';
 import { settingdata } from '@/index';
+import { MindMapNodeShapeUtil } from './MindMap/MindMapNodeShapeUtil';
+import { MindMapNodeTool } from './MindMap/MindMapNodeTool';
 const assetUrls = getAssetUrls({ baseUrl: 'plugins/siyuan-steve-tools/asset/' })
 
 
 // There's a guide at the bottom of this file!
 
 // [1]
-const customShapeUtils = [...defaultShapeUtils, CardShapeUtil, SlideShapeUtil]
-const customTools = [CardShapeTool, SlideShapeTool]
+const customShapeUtils = [...defaultShapeUtils, CardShapeUtil, SlideShapeUtil, MindMapNodeShapeUtil]
+const customTools = [CardShapeTool, SlideShapeTool, MindMapNodeTool]
 /**
  * TldrawManager类，用于管理tldraw实例和操作
  */
@@ -58,7 +60,7 @@ export class TldrawManager {
         this.blockIds = blockIds || [];
         this.storageKey = `tldraw-data-${this.id}`;
         this.store = createTLStore({
-            shapeUtils: customShapeUtils
+            shapeUtils: customShapeUtils,
         });
 
         // 初始化tldraw
@@ -73,30 +75,66 @@ export class TldrawManager {
         root.style.width = '100%';
         root.style.height = '100%';
         this.container.appendChild(root);
+        try {
+            // 加载之前保存的数据
+            await this.loadData();
+            // 只有在加载成功后才渲染
+            this.renderTldraw(root);
+        } catch (error) {
+            // 加载数据失败，停止初始化并显示错误信息
+            console.error("初始化 Tldraw 失败，无法加载数据:", error);
+            showMessage("加载画板数据失败，请检查数据文件或联系开发者。", 5000, "error");
 
-        // 加载之前保存的数据
-        await this.loadData();
+            // 在 root 中显示错误信息和强制加载按钮
+            root.innerHTML = `
+                <div style="padding: 20px; color: red; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                    <p>加载画板数据失败，请检查控制台获取更多信息。</p>
+                    <p style="color: orange; margin-top: 10px;">您可以强制创建一个新的空白画板，但这将导致无法加载的数据丢失。</p>
+                    <button id="force-load-tldraw-${this.id}" style="margin-top: 15px; padding: 8px 15px; cursor: pointer;">强制创建新画板</button>
+                </div>
+            `;
 
-        // 渲染tldraw组件
-        this.renderTldraw(root);
+            // 为按钮添加事件监听器
+            const forceLoadButton = root.querySelector(`#force-load-tldraw-${this.id}`);
+            if (forceLoadButton) {
+                forceLoadButton.addEventListener('click', () => {
+                    // 清空错误信息
+                    root.innerHTML = '';
+                    // 渲染一个新的 Tldraw 实例
+                    showMessage("正在创建新的空白画板...", 3000, "info");
+                    this.renderTldraw(root);
+                });
+            }
+        }
     }
 
     /**
     * 加载保存的数据
+    * @returns Promise<boolean> 是否加载成功
     */
-    private async loadData() {
+    private async loadData(): Promise<boolean> {
         try {
             // 从思源笔记的存储中获取数据
             const data = await api.getFile(`/data/storage/petal/sttools/${this.storageKey}.json`);
 
             if (data) {
-                console.log("dadasss", data);
-                loadSnapshot(this.store, data);
-                console.log('已加载保存的画布数据');
+                console.log("加载到数据", data);
+                // 尝试解析和加载快照
+                try {
+                    loadSnapshot(this.store, data);
+                    console.log('已加载保存的画布数据');
+                    return true; // 加载成功
+                } catch (parseError) {
+                    console.error('解析或加载快照失败', parseError);
+                    // 如果解析或加载失败，也视为加载失败，抛出错误
+                    throw new Error('加载画布数据失败：数据格式错误');
+                }
             }
+            return true; // 没有数据也算成功（使用空状态）
         } catch (error) {
-            console.warn('加载画布数据失败或无保存数据', error);
-            // 无保存数据时继续使用空的 store
+            console.error('加载画布数据失败', error);
+            // 抛出错误，中断后续操作
+            throw error;
         }
     }
 
@@ -201,7 +239,7 @@ export class TldrawManager {
 
                             // 解析拖拽数据
                             const blockIdo_rigin = e.dataTransfer!.types[0];
-                            // console.log('拖拽的数据类型', blockIdo_rigin);
+                            // console.log('拖拽的数据类型', e);
                             // 使用正则表达式提取块ID
                             let blockId = '';
                             if (blockIdo_rigin.startsWith('application/siyuan')) {
@@ -223,9 +261,19 @@ export class TldrawManager {
                             });
                             const idid = await api.generateSiyuanID();
                             const timestamp = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-                            const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${idid}&title=${this.title}`;
-                            const aproblock = await api.insertBlock("markdown", `##### [${timestamp}](${link})
+                            let aproblock: string;
+                            if (blockIdo_rigin.includes('nodeheading')) {
+                                aproblock = blockId;
+                                const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${aproblock}&title=${this.title}`;
+                                const content = (await api.getBlockByID(blockId)).markdown;
+                                await api.updateBlock("markdown",`${content}[🔗](${link})`, aproblock)
+                            }
+                            else {
+                                aproblock = idid as string;
+                                const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${aproblock}&title=${this.title}`;
+                                await api.insertBlock("markdown", `##### [${timestamp}](${link})[🔗](${link})
 {: id="${idid}" custom-st-tldraw="1" }`, blockId)
+                            }
                             // 创建新的Card形状
                             // console.log("创建新的卡片形状",  aproblock[0].doOperations[0].id);
                             editor.createShape({
@@ -237,7 +285,7 @@ export class TldrawManager {
                                     h: 300,
                                     color: 'black',
                                     showMask: true,
-                                    blockId: aproblock[0].doOperations[0].id,
+                                    blockId: aproblock,
                                 },
                             });
                             // api.setBlockAttrs(blockId, {
@@ -257,11 +305,27 @@ export class TldrawManager {
                             const cardShape = shape as ICardShape;
                             const blockId = cardShape.props?.blockId;
                             if (!blockId) return;
-                            if (await api.getBlockByID(blockId)) {
-                                api.setBlockAttrs(blockId, { 'custom-st-tldraw': '0' })
-                                    .then()
-                                    .catch(err => console.error('Failed to update block attributes:', err))
-                            };
+
+                            // 获取所有页面上的所有形状
+                            const allShapes = editor.store.query.records('shape').get();
+                            // 检查所有页面上是否还存在引用相同 blockId 的卡片
+                            const remainingCardsWithSameBlockId = allShapes
+                                .filter(s => s.type === 'card' && (s as ICardShape).props?.blockId === blockId);
+
+                            // 只有当没有其他卡片引用此 blockId 时，才更新块属性
+                            if (remainingCardsWithSameBlockId.length === 0) {
+                                if (await api.getBlockByID(blockId)) {
+                                    if (settingdata['SyncDelete']) {
+                                        api.deleteBlock(blockId)
+                                    } else {
+                                        api.setBlockAttrs(blockId, { 'custom-st-tldraw': '0' })
+                                            .then(() => console.log(`Block attribute updated for ${blockId} as it's no longer referenced.`))
+                                            .catch(err => console.error('Failed to update block attributes:', err));
+                                    }
+                                }
+                            } else {
+                                console.log(`Block attribute for ${blockId} not updated as other cards still reference it.`);
+                            }
                         });
 
 
@@ -498,6 +562,7 @@ export class TldrawManager {
             // 获取当前数据
             const snapshot = getSnapshot(this.store);
             const jsonData = JSON.stringify(snapshot);
+            console.log('备份数据:', jsonData);
 
             // 生成备份文件名
             const trashFileName = `${this.storageKey}-${reason}-${Date.now()}.json`;
@@ -596,13 +661,16 @@ export class TldrawManager {
     }
 
     /**
-     * 导航到包含特定思源块的形状
+     * 导航到包含特定思源块的形状(二选一)
      * @param blockId 思源块ID
+     * @param shapeId 形状ID（可选）
      * @returns 是否成功导航
      */
-    public navigateToBlockShape(blockId: string): boolean {
-        const shapeId = this.findShapeByBlockId(blockId);
-        console.log("导航到块形状", shapeId, blockId);
+    public navigateToBlockShape(blockId: string, shapeId = "" as TLShapeId): boolean {
+        if (shapeId === "") {
+            shapeId = this.findShapeByBlockId(blockId);
+        }
+        console.log("导航到形状", shapeId, blockId);
         if (!shapeId) return false;
 
         if (this.editor) {

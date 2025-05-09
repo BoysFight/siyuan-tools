@@ -1,6 +1,6 @@
 {
   "name": "siyuan-steve-tools",
-  "version": "0.0.1",
+  "version": "0.8.1",
   "type": "module",
   "description": "",
   "repository": "",
@@ -8,12 +8,13 @@
   "author": "steve",
   "license": "MIT",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development VITE_SOURCEMAP=inline vite build --watch",
-    "build": "cross-env NODE_ENV=production vite build",
+    "d": "cross-env NODE_ENV=development VITE_SOURCEMAP=inline vite build --watch",
+    "b": "cross-env NODE_ENV=production vite build",
     "make-link": "node --no-warnings ./scripts/make_dev_link.js",
     "make-link-win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/elevate.ps1 -scriptPath ./scripts/make_dev_link.js",
     "make-install": "pnpm run build && node --no-warnings ./scripts/make_install.js",
-    "update-version": "node --no-warnings ./scripts/update_version.js"
+    "update-version": "node --no-warnings ./scripts/update_version.js",
+    "r": "bash ./my/release.sh"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
@@ -58,6 +59,7 @@
     "dayjs": "^1.11.13",
     "drawflow": "^0.0.60",
     "fabric": "^6.6.1",
+    "html2canvas": "^1.4.1",
     "ical": "^0.8.0",
     "ical.js": "^2.1.0",
     "ics": "^3.8.1",

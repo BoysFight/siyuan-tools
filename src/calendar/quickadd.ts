@@ -3,6 +3,7 @@ import { IProtyle, showMessage, subMenu } from 'siyuan';
 import { allKBEvents, handleAddButtonClick } from './kanban';
 import { updateAttrViewCell_pro } from '@/api';
 import { findEventByPublicId, run_getsubevents } from './myK';
+import { api } from '@frostime/siyuan-plugin-kits';
 
 interface BlockNode {
     id: string;
@@ -104,15 +105,19 @@ export function runblockdata_for_time(content: string): string | null {
     if (content === '') {
         return null;
     }
+    // console.log('runblockdata_for_time', content);
     // 支持“下午4点”“今天下午4点”等描述
-    const datePattern = /(明天|后天|今天|下周|下月|(\d{1,2})月(\d{1,2})号|(\d{1,2})号)?/;
+    const datePattern = /(明天|后天|今天|下周|下月|(\d{1,2})月(\d{1,2})号|(\d{1,2})号)/;
     // 支持“下午4点”“4点”“16:00”等
-    const timePattern = /(上午|下午|中午|晚上)?\s*(\d{1,2})\s*点(?:\s*(\d{1,2})\s*分)?|(\d{1,2})\s*[:|：]\s*(\d{1,2})/;
+    // 排除 HH:MM:SS, :MM:SS, 以及部分匹配如 00:32:32 中的 32:32
+    // (?<![:\d]) 确保 HH:MM 前面不是冒号或数字
+    // (?![:|：|\d]) 确保 HH:MM 后面不是冒号或数字
+    const timePattern = /(上午|下午|中午|晚上)?\s*(\d{1,2})\s*点(?:\s*(\d{1,2})\s*分)?|(?<![:\d])(\d{1,2})\s*[:|：]\s*(\d{1,2})(?![:|：|\d])/;
 
     const dateMatch = content.match(datePattern);
     const timeMatch = content.match(timePattern);
-    console.log('dateMatch', dateMatch);
-    console.log('timeMatch', timeMatch);
+    // console.log('dateMatch', dateMatch);
+    // console.log('timeMatch', timeMatch);
     if (!dateMatch) return null;
 
     let targetDate = dayjs();
@@ -151,23 +156,36 @@ export function runblockdata_for_time(content: string): string | null {
     // 处理时间部分
     if (timeMatch) {
         let hours = 8, minutes = 0;
-        if (timeMatch[2]) {
+        // 注意：由于在 HH:MM 前面加了 lookbehind，捕获组的索引可能需要调整
+        // 检查 timeMatch 数组的内容来确定正确的索引
+        // 假设 "X点X分" 仍然是 1, 2, 3
+        // 假设 "HH:MM" 现在是 4, 5 (因为 lookbehind 不计入捕获组)
+        if (timeMatch[2]) { // 匹配 "X点X分" 格式
             hours = parseInt(timeMatch[2]);
             minutes = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
-            // 处理上午/下午/中午/晚上
             const period = timeMatch[1];
             if (period === '下午' || period === '晚上') {
                 if (hours < 12) hours += 12;
             } else if (period === '中午') {
                 if (hours < 11) hours += 12;
+                else if (hours === 12) hours = 12;
+            } else if (period === '上午') {
+                if (hours === 12) hours = 0;
             }
-        } else if (timeMatch[4] && timeMatch[5]) {
+        } else if (timeMatch[4] && timeMatch[5]) { // 匹配 "HH:MM" 格式
             hours = parseInt(timeMatch[4]);
             minutes = parseInt(timeMatch[5]);
         }
-        targetDate = targetDate.hour(hours).minute(minutes);
+        // 确保小时和分钟在有效范围内
+        if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+            targetDate = targetDate.hour(hours).minute(minutes).second(0).millisecond(0); // 清除秒和毫秒
+        } else {
+            console.warn(`无效的时间格式: ${timeMatch[0]}`);
+            return null;
+        }
+
     } else {
-        // 如果没有指定时间，默认设置为当天 08:00
+        // 如果没有指定时间，返回 null
         return null;
     }
 
@@ -178,7 +196,7 @@ export function runblockdata_for_sub(content: string): { subevent: string, compl
     // 使用正则表达式全局匹配所有 [X] 或 [ ] 及后面的事件内容，考虑markdown列表格式
     const taskRegex = /^\s*\*\s*\{:[^}]*\}\s*\[(X| )\]\s*(.+?)(?=\s*\{:|$)/gm;
     const results: { subevent: string, completed: boolean }[] = [];
-    
+
     let match;
     while ((match = taskRegex.exec(content)) !== null) {
         results.push({
@@ -186,17 +204,17 @@ export function runblockdata_for_sub(content: string): { subevent: string, compl
             completed: match[1] === 'X'
         });
     }
-    
+
     return results;
 }
 
 /**
- * 从内容中提取分类信息，支持 #分类名 或 分类: 分类名
+ * 从内容中提取分类信息，支持 #分类名# 或 分类: 分类名
  * 返回第一个匹配的分类名字符串，未匹配返回空字符串
  */
 export function runblockdata_for_category(content: string): string {
-    // 匹配 #分类名
-    const hashPattern = /#([\u4e00-\u9fa5\w\-]+)/;
+    // 匹配 #分类名#
+    const hashPattern = /#([\u4e00-\u9fa5\w\-]+)#/; // Changed pattern
     const hashMatch = content.match(hashPattern);
     if (hashMatch) {
         return hashMatch[1];
@@ -210,7 +228,31 @@ export function runblockdata_for_category(content: string): string {
     return '';
 }
 
+export function runblockdata_for_note(content: string): string {
+    // 匹配包含"@描述"的文本行
+    const notePattern = /([^\n]+)@描述/;
+    const noteMatch = content.match(notePattern);
+    
+    if (noteMatch && noteMatch[1]) {
+        // 返回删除了"@描述"的文本内容，并去除首尾空格
+        return noteMatch[1].trim();
+    }
+    
+    return '';
+}
 
+export function runblockdata_for_title(content: string): string {
+    // 匹配包含"@描述"的文本行
+    const notePattern = /([^\n]+)@日程/;
+    const noteMatch = content.match(notePattern);
+    
+    if (noteMatch && noteMatch[1]) {
+        // 返回删除了"@描述"的文本内容，并去除首尾空格
+        return noteMatch[1].trim();
+    }
+    
+    return '';
+}
 
 
 
@@ -256,7 +298,7 @@ async function quickadd_event_more_main(listItemsdata: BlockTreeResult['listItem
     for (const item of listItemsdata) {
         if (item.id) {
             try {
-                 isok = await handleAddButtonClick("", {
+                isok = await handleAddButtonClick("", {
                     directid: item.id,
                     isdirect: true
                 });
@@ -266,8 +308,8 @@ async function quickadd_event_more_main(listItemsdata: BlockTreeResult['listItem
                         resolve(void 0);
                     }, 1000);
                 });
-                if(isok){
-                    isok=false;
+                if (isok) {
+                    isok = false;
                     showMessage(`成功处理列表项 ${item.id}`);
                     continue;
                 }
@@ -332,4 +374,79 @@ export async function quickadd_event_more_sub(listItemsdata: BlockTreeResult['li
     }
 }
 
+export async function addquikaddButton(e) {
+    const breadcrumb = e.detail.protyle.element.querySelector('.protyle-breadcrumb');
+    if (breadcrumb) {
+        // Check if the button container already exists
+        const existingButtonContainer = breadcrumb.querySelector('.quikadd-container');
+        if (!existingButtonContainer) {
+            // Find the "more" button to insert before
+            const moreButton = breadcrumb.querySelector('button[data-type="more"]');
+
+            // Create a container for the icon, using a span or div instead of button
+            const iconContainer = document.createElement('span'); // Use span or div as a non-button container
+            iconContainer.className = 'quikadd-container'; // Add a class for identification
+            // Use an <i> tag for the icon, assuming 'iconSelect' is a valid icon class
+            iconContainer.innerHTML = `<div class="protyle-breadcrumb block__icon ariaLabel quikadd" aria-label="点击 <span class='ft__on-surface'>一键识别日程</span>">
+    <svg><use xlink:href="#iconCalendar"></use></svg>
+</div>`;
+
+            // Find the clickable element (the div with class 'quikadd')
+            const clickableIcon = iconContainer.querySelector('.quikadd');
+
+            if (clickableIcon) {
+                // Add click event listener to the icon div
+                clickableIcon.addEventListener('click', async () => {
+                    let ChildBlocks = await api.getChildBlocks(e.detail.protyle.block.rootID);
+                    // console.log('ChildBlocks', ChildBlocks);
+                    const idsWithSchedule = ChildBlocks
+                        .filter(block => block.content && block.content.includes('@日程'))
+                        .map(block => block.id);
+
+                    console.log('包含"@日程"的块ID:', idsWithSchedule);
+                    if (idsWithSchedule.length === 0) {
+                        showMessage('未找到包含"@日程"的块。');
+                        return;
+                    }
+
+                    // showMessage(`开始处理 ${idsWithSchedule.length} 个包含"@日程"的块...`);
+
+                    for (const blockId of idsWithSchedule) {
+                        try {
+                            // console.log(`Processing block: ${blockId}`);
+                            showMessage(`正在处理块 ${blockId}`,-1, 'info','@日程');
+                            // Call handleAddButtonClick for the current block ID
+                            const success = await handleAddButtonClick('', { isdirect: true, directid: blockId });
+                            if (success) {
+                                // showMessage(`成功处理块 ${blockId}`);
+                                showMessage(`成功处理块 ${blockId}`,-1, 'info','@日程');
+                            } else {
+                                // Assuming handleAddButtonClick returns false or similar on non-success without throwing an error
+                                showMessage(`处理块 ${blockId} 未标记为成功`, 3000, 'info');
+                            }
+                            // Add a delay to prevent potential issues with rapid processing, similar to quickadd_event_more_main
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        } catch (error) {
+                            console.error(`处理块 ${blockId} 时出错:`, error);
+                            showMessage(`处理块 ${blockId} 时出错: ${error.message || error}`, 5000, 'error');
+                            // Optional: Add a delay even after an error before processing the next one
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    }
+
+                    showMessage('所有包含"@日程"的块处理完毕。',3000, 'info','@日程');
+                });
+            } else {
+                console.error("Could not find the clickable icon element.");
+            }
+
+            // Insert the icon container before the "more" button if it exists, otherwise append to breadcrumb
+            if (moreButton) {
+                breadcrumb.insertBefore(iconContainer, moreButton);
+            } else {
+                breadcrumb.appendChild(iconContainer); // Fallback if "more" button isn't found
+            }
+        }
+    }
+}
 

@@ -4,6 +4,7 @@ import { openTab, Plugin, showMessage, Tab } from "siyuan";
 import { TldrawManager } from './tldraw/tldraw-manager';
 import { addWhiteboardButton } from "./function/assist";
 import * as api from "@/api";
+import { TLShapeId } from "@tldraw/tldraw";
 const tldrawInstances: Map<string, TldrawManager> = new Map();
 export class M_handwriting {
     private plugin: Plugin;
@@ -18,7 +19,7 @@ export class M_handwriting {
     async init(settingdata) {
         // 添加图标
         this.plugin.addIcons(`
-            <symbol id="iconSTWhiteboard" viewBox="0 0 500 500">
+            <symbol id="iconSTWhiteboard" viewBox="0 0 24 24">
                ${ic.steveTools_whiteboard}
             </symbol>  
         `);
@@ -35,13 +36,32 @@ export class M_handwriting {
                     const params = new URLSearchParams(queryString);
                     const rootid = params.get('rootid');
                     const blockid = params.get('blockid');
+                    const shapeid = params.get('shapeid');
                     const title = params.get('title') || "画板" + rootid;
                     // console.log('解析思源 URL 参数:', { rootid, blockid });
                     //判断rootid和blockid是否存在
+                    if (rootid && blockid === null) {
+                        await openTab({
+                            app: this.plugin.app,
+                            custom: {
+                                id: this.plugin.name + "steveTool-whiteboard",
+                                title: title,
+                                icon: "iconSTWhiteboard",
+                                data: {
+                                    text: "steveTool-whiteboard" + rootid,
+                                    rootid: rootid,
+                                },
+                            },
+                            position: "right",
+                        });
+                        return;
+                    }
+
                     if (!rootid || !blockid) {
                         showMessage("缺少必要的参数");
                         return;
                     }
+
                     // 这里可以根据解析出的参数执行相应操作
                     if (rootid && blockid) {
                         const docblock = await api.getBlockByID(rootid);
@@ -50,7 +70,7 @@ export class M_handwriting {
                             showMessage('未找到此rootid对应的块');
                             return;
                         }
-                        if(docblock.id !== docblock.root_id){
+                        if (docblock.id !== docblock.root_id) {
                             showMessage('当前块不是根块，请检查');
                             return;
                         }
@@ -74,7 +94,14 @@ export class M_handwriting {
                         });
                         const tldrawManager = (tab.panelElement as any).tldrawManager as TldrawManager;
                         // console.log("tldrawManager", tldrawManager);
-                        tldrawManager.navigateToBlockShape(blockid);
+                        // 延时500毫秒后再导航
+                        setTimeout(() => {
+                            if (shapeid) {
+                                tldrawManager.navigateToBlockShape(blockid, shapeid as TLShapeId);
+                            } else if (blockid) {
+                                tldrawManager.navigateToBlockShape(blockid);
+                            }
+                        }, 50);
                     }
                 } catch (error) {
                     console.error('解析思源 URL 参数出错:', error);

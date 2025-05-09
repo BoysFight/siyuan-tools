@@ -472,7 +472,7 @@ export async function run(
                     menuContent.className = 'view-filter-content';
 
                     // 添加QQ日历选项
-                    if (moduleInstances['M_calendar']?.QQCalDAVClient) {
+                    if (1) {
                         const qqItem = document.createElement('div');
                         qqItem.className = 'view-filter-item';
 
@@ -503,12 +503,13 @@ export async function run(
                             moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
                             moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
                             moduleInstances['M_calendar'].calConfig.save();
+                            refreshFiltersDisplay();
                         };
 
                         menuContent.appendChild(qqItem);
                     }
                     // 添加ICS订阅选项
-                    if (moduleInstances['M_calendar']?.icsSubscription) {
+                    if (1) {
                         const icsItem = document.createElement('div');
                         icsItem.className = 'view-filter-item';
 
@@ -539,11 +540,12 @@ export async function run(
                             moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
                             moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
                             moduleInstances['M_calendar'].calConfig.save();
+                            refreshFiltersDisplay();
                         };
 
                         menuContent.appendChild(icsItem);
                     }
-                    if (moduleInstances['M_lifelog']?.enabled) {
+                    if (1) {
                         const lifelogItem = document.createElement('div');
                         lifelogItem.className = 'view-filter-item';
 
@@ -575,7 +577,7 @@ export async function run(
                             moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
                             moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
                             moduleInstances['M_calendar'].calConfig.save();
-
+                            refreshFiltersDisplay();
                             calendar.refetchEvents();
                         };
 
@@ -620,7 +622,7 @@ export async function run(
                             moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
                             moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
                             moduleInstances['M_calendar'].calConfig.save();
-
+                            refreshFiltersDisplay()
                             // 不关闭菜单，允许多选
                         };
                         menuContent.appendChild(item);

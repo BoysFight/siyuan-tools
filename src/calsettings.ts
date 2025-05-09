@@ -74,6 +74,8 @@ export const defaultSettings = {
     "SelectTOPics": "",
     //白板配置
     "isGridMode": false, // 是否开启网格模式
+    "copyLinkTitle": true, // 是否复制标题
+    'SyncDelete': false, // 是否同步删除
 };
 
 export function getSettings() {

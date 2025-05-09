@@ -267,8 +267,7 @@
                     //7
                     type: "checkbox",
                     title: "自动更新ics文件",
-                    description:
-                        "启用后每次修改日程触发自动更新ics文件",
+                    description: "启用后每次修改日程触发自动更新ics文件",
                     key: "cal-auto-update",
                     value: settings["cal-auto-update"],
                 },
@@ -276,8 +275,7 @@
                     //7
                     type: "checkbox",
                     title: "同步更新ics文件",
-                    description:
-                        "启用后每次同步完后触发自动更新ics文件",
+                    description: "启用后每次同步完后触发自动更新ics文件",
                     key: "cal-auto-syncing-update",
                     value: settings["cal-auto-syncing-update"],
                 },
@@ -565,7 +563,7 @@
         },
         {
             name: "画板",
-            subGroups: ["基本设置", "备份管理"], // 添加子组
+            subGroups: ["基本设置", "备份管理", "引用管理"], // 添加子组
             activeSubGroup: "基本设置",
             items: [
                 {
@@ -597,11 +595,33 @@
                     value: settings["isGridMode"],
                 },
                 {
+                    type: "checkbox",
+                    title: "复制链接标题",
+                    description: "启用后复制链接时会包含标题",
+                    key: "copyLinkTitle",
+                    value: settings["copyLinkTitle"],
+                },
+                {
+                    type: "checkbox",
+                    title: "同步删除(不建议启用)",
+                    description: "启用后在画板删除块时会同步删除笔记中的块（无法撤回）",
+                    key: "SyncDelete",
+                    value: settings["SyncDelete"],
+                },
+                {
                     type: "custom", // 自定义组件类型
                     title: "画板备份管理",
                     description: "管理所有画板的备份文件",
                     key: "tldraw-backup-manager",
                     component: "TldrawBackupManager", // 指定组件名称
+                    value: "", // 不需要值
+                },
+                {
+                    type: "custom", // 自定义组件类型
+                    title: "画板引用管理",
+                    description: "管理未引用的画板,点击标题切换模式",
+                    key: "tldraw-reference-manager",
+                    component: "TldrawReferenceManager", // 指定组件名称
                     value: "", // 不需要值
                 },
             ],
@@ -626,8 +646,7 @@
                 {
                     type: "hint",
                     title: "感谢",
-                    description:
-                        "此功能由 BoysFight PR贡献",
+                    description: "此功能由 BoysFight PR贡献",
                     key: "lifelog-hint",
                     value: "",
                 },
@@ -767,12 +786,13 @@
             ics设置: 7,
             ics分享: 9,
             订阅日历: 6,
-            视图设置: 5,
+            视图设置: 6,
             // 不限制
         },
-        "画板": {
-            基本设置: 3, // 复选框和选择框
+        画板: {
+            基本设置: 5, // 复选框和选择框
             备份管理: 1, // 备份管理组件
+            引用管理: 1, // 引用管理组件
         },
         // "docker同步感知": {
         //     "连接设置": 4,

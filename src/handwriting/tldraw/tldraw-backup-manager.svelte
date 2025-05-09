@@ -153,7 +153,14 @@
                 throw new Error('备份文件内容为空');
             }
             
-            const blob = new Blob([data], { type: 'application/json' });
+            // 如果 data 是对象，则序列化为 JSON 字符串
+            let fileData: BlobPart;
+            if (typeof data === 'object' && !(data instanceof Blob)) {
+                fileData = JSON.stringify(data, null, 2);
+            } else {
+                fileData = data;
+            }
+            const blob = new Blob([fileData], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -327,13 +334,13 @@
         padding-right: 30px;
     }
     
-    .search-icon {
+    /* .search-icon {
         position: absolute;
         right: 8px;
         top: 50%;
         transform: translateY(-50%);
         color: var(--b3-theme-on-surface-light);
-    }
+    } */
     
     .backup-list-container {
         flex: 1;

@@ -19,7 +19,9 @@ import {
     TLEventMap,
     track, // 导入 track
     useRelevantStyles,
-    DefaultStylePanelContent, // 导入 useRelevantStyles
+    DefaultStylePanelContent,
+    DefaultQuickActions,
+    DefaultQuickActionsContent, // 导入 useRelevantStyles
 } from '@tldraw/tldraw'
 
 // Extend the TLEventMap interface to include custom events
@@ -35,7 +37,8 @@ import { $currentSlide, getSlides, moveToSlide } from './SlideShape/useSlides';
 import { SlidesPanel } from './SlideShape/SlidesPanel';
 import { ICardShape } from './CardShape/card-shape-types';
 import { SlideShape } from './SlideShape/SlideShapeUtil';
-import { openTab } from 'siyuan';
+import { openTab, showMessage } from 'siyuan';
+import { settingdata } from '@/index';
 // There's a guide at the bottom of this file!
 
 export const uiOverrides: TLUiOverrides = {
@@ -57,6 +60,15 @@ export const uiOverrides: TLUiOverrides = {
             label: 'Slide',
             kbd: 's',
             onSelect: () => editor.setCurrentTool('slide'),
+        }
+        tools['mindmap-node'] = {
+            id: 'mindmap-node',
+            icon: 'activity', // 你可以选择一个更合适的图标
+            label: 'MindMap Node',
+            kbd: 'm', // 设置键盘快捷键
+            onSelect: () => {
+                editor.setCurrentTool('mindmap-node')
+            },
         }
         return tools
     },
@@ -94,6 +106,14 @@ export const uiOverrides: TLUiOverrides = {
                     }
                 },
             },
+            'zoom-in': {
+                ...actions['zoom-in'], // Keep default behavior
+                kbd: '', 
+            },
+            'zoom-out': {
+                ...actions['zoom-out'], // Keep default behavior
+                kbd: '', 
+            },
             // 'toggle-grid': { ...actions['toggle-grid'], kbd: '' },
         }
     },
@@ -106,6 +126,15 @@ const CustomStylePanel = track(() => {
 
     const isSingleSlideSelected = selectedShapes.length === 1 && selectedShapes[0].type === 'slide';
     const slideShape = isSingleSlideSelected ? (selectedShapes[0] as SlideShape) : null;
+
+    // --- 获取 rootId ---
+
+    const container = editor.getContainer();
+    const editorElement = container?.closest('.tldraw__editor');
+    const rootId = editorElement?.getAttribute('data-tldraw-id');
+    const title = editorElement?.getAttribute('data-tldraw-title');
+    const blockId = rootId;
+
 
     const handleNameChange = React.useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,12 +179,36 @@ const CustomStylePanel = track(() => {
         []
     );
 
+    const handleCopyLink = React.useCallback(async () => {
+        if (slideShape && rootId !== '') { // 检查 rootId 是否已设置
+            const shapeId = slideShape.id;
+            // 使用幻灯片名称，如果为空则使用 rootId 作为后备标题
+            let url: string;
+            if (settingdata['copyLinkTitle']) {
+                url = `[slide:${slideShape.props.name}](siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${shapeId})`;
+            } else {
+                url = `siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${shapeId}`
+            }
+            try {
+                await navigator.clipboard.writeText(url);
+                showMessage('幻灯片链接已复制到剪贴板!'); // 简单反馈
+                console.log('Link copied:', url);
+            } catch (err) {
+                console.error('无法复制链接: ', err);
+                showMessage('复制链接失败。', -1, "error");
+            }
+        } else if (rootId === '') {
+            showMessage('无法生成链接：缺少 rootId。', -1, "error");
+            console.error('Cannot copy link: rootId is not set.');
+        }
+    }, [editor, slideShape, rootId]); // 添加依赖项
+
 
     return (
         <DefaultStylePanel>
             {/* 渲染默认的样式控件 */}
             <DefaultStylePanelContent styles={styles} />
-            
+
             {isSingleSlideSelected && slideShape && (
                 <div className="tlui-style-panel__section"> {/* 移除 styles={styles}，因为父级已经处理 */}
                     <input
@@ -168,25 +221,76 @@ const CustomStylePanel = track(() => {
                         onPointerDown={stopEventPropagation}
                         spellCheck={false}
                     />
+                    <button
+                        className="tlui-button" // 使用 tldraw 风格的按钮类名 (可能需要调整)
+                        onClick={handleCopyLink}
+                        onPointerDown={stopEventPropagation} // 阻止事件冒泡
+                        style={{ marginTop: '-8px', width: '100%' }} // 添加边距并充满宽度
+                        disabled={rootId === ''} // 如果 rootId 未设置则禁用
+                    >
+                        复制链接
+                    </button>
                 </div>
             )}
         </DefaultStylePanel>
     );
 });
 
+function CustomQuickActions() {
+    const editor = useEditor()
+    const container = editor.getContainer();
+    const editorElement = container?.closest('.tldraw__editor');
+    const rootId = editorElement?.getAttribute('data-tldraw-id');
+    const title = editorElement?.getAttribute('data-tldraw-title');
+    return (
+        <DefaultQuickActions>
+            <DefaultQuickActionsContent />
+            <div>
+                <TldrawUiMenuItem id="heading" icon="heading" label="打开文档" onSelect={() => {
+                    openTab({
+                        app: window.siyuan.ws.app,
+                        doc: {
+                            id: rootId,
+                        },
+                        position: "right",
+                    });
+                }} />
+            </div>
+            <div>
+                <TldrawUiMenuItem id="external-link" icon="external-link" label="复制白板链接" onSelect={() => {
+                    let url: string;
+                    if (settingdata['copyLinkTitle']) {
+                        url = `[画板:${title}](siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&title=${title})`;
+                    } else {
+                        url = `siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&title=${title}`
+                    }
+                    navigator.clipboard.writeText(url).then(() => {
+                        showMessage('链接已复制到剪贴板!');
+                    }).catch(err => {
+                        console.error('无法复制链接: ', err);
+                    });
+                }} />
+            </div>
+        </DefaultQuickActions>
+    )
+}
 
 
 export const components: TLComponents = {
     HelperButtons: SlidesPanel,
+    QuickActions: CustomQuickActions,
+    StylePanel: CustomStylePanel,
     // Minimap: null,
     Toolbar: (props) => {
         const tools = useTools()
         const isCardSelected = useIsToolSelected(tools['card'])
         const isSlideSelected = useIsToolSelected(tools['slide'])
+        // const isMindMapNodeSelected = useIsToolSelected(tools['mindmap-node'])
         return (
             <DefaultToolbar {...props}>
                 <TldrawUiMenuItem {...tools['card']} isSelected={isCardSelected} />
                 <TldrawUiMenuItem {...tools['slide']} isSelected={isSlideSelected} />
+            
                 <DefaultToolbarContent />
             </DefaultToolbar>
         )
@@ -235,7 +339,7 @@ export const components: TLComponents = {
             </DefaultMainMenu>
         )
     },
-    StylePanel: CustomStylePanel,
+
     InFrontOfTheCanvas: () => {
         const editor = useEditor()
 
@@ -309,12 +413,11 @@ export const components: TLComponents = {
                 <button
                     style={buttonStyle}
                     onClick={() => {
-                        // 复制卡片
-                        editor.duplicateShapes([selectionInfo.id])
+                        showMessage('开发中。。。');
                     }}
-                    title="复制卡片"
+                    title="刷新卡片"
                 >
-                    📋
+                    🔄
                 </button>
                 <button
                     style={buttonStyle}
@@ -375,15 +478,6 @@ export const components: TLComponents = {
                                 fontSize: newSize,
                             },
                         });
-
-                        // // 直接应用到当前DOM元素以立即看到效果
-                        // const cardElement = document.querySelector(`[data-shape-id="${selectionInfo.id}"]`);
-                        // if (cardElement) {
-                        //     const protyleElement = cardElement.querySelector(".protyle-wysiwyg");
-                        //     if (protyleElement) {
-                        //         (protyleElement as HTMLElement).style.fontSize = `${newSize}px`;
-                        //     }
-                        // }
                     }}
                     title="放大字体"
                 >
@@ -411,15 +505,6 @@ export const components: TLComponents = {
                                 fontSize: newSize,
                             },
                         });
-
-                        // // 直接应用到当前DOM元素以立即看到效果
-                        // const cardElement = document.querySelector(`[data-shape-id="${selectionInfo.id}"]`);
-                        // if (cardElement) {
-                        //     const protyleElement = cardElement.querySelector(".protyle-wysiwyg");
-                        //     if (protyleElement) {
-                        //         (protyleElement as HTMLElement).style.fontSize = `${newSize}px`;
-                        //     }
-                        // }
                     }}
                     title="减小字体"
                 >

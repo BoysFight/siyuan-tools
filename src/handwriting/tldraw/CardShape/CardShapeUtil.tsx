@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, ReactElement } from 'react'
 import React from 'react';
 import {
 	HTMLContainer,
 	Rectangle2d,
 	ShapeUtil,
+	SvgExportContext,
 	TLResizeInfo,
 	TLShape,
 	getDefaultColorTheme,
@@ -15,6 +16,7 @@ import { ICardShape } from './card-shape-types'
 import { Protyle, showMessage } from 'siyuan';
 import * as api from '@/api';
 import { settingdata } from '@/index';
+
 let isCreatingBlock = false;
 let lastCreatedBlockId = null;
 let pendingCreationPromise = null;
@@ -60,6 +62,8 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 			isNewlyCreated: true,
 			fontSize: 16, // 默认字体大小
 			isMain: false, // 是否为主卡片
+			refreshNonce: Date.now(), // 用于之后强制刷新
+			// version: 1, // 版本号
 		}
 	}
 
@@ -225,7 +229,7 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 									const idid = await api.generateSiyuanID() as string;
 									const timestamp = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 									const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${tldrawId}&blockid=${idid}&title=${title}`;
-									const redata = await api.appendBlock("markdown", `##### [${timestamp}](${link})
+									const redata = await api.appendBlock("markdown", `##### [${timestamp}](${link})[🔗](${link})
 {: id="${idid}" custom-st-tldraw="1" }`, tldrawId || daynote_id)
 
 									const newBlockId = redata[0].doOperations[0].id;
@@ -342,6 +346,8 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 					boxShadow: isEditingState ? '0 0 0 2px #3d8aff' : 'none',
 					cursor: isEditingState ? 'text' : 'default',
 					padding: 0,
+					border: `3px solid ${theme[shape.props.color].solid}`, // 添加颜色边框
+					borderRadius: '10px', // 增加圆角
 				}}
 				onDoubleClick={handleDoubleClick}
 				onPointerDown={handlePointerEvent}
@@ -359,6 +365,7 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 						touchAction: isEditingState ? 'auto' : 'none',
 						contain: 'strict', // 强力隔离
 						padding: '0px', // 为内容添加最小边距
+						// borderRadius: 'inherit', // 继承父元素的圆角
 					}}
 				></div>
 			</HTMLContainer >
@@ -374,6 +381,41 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 	override onResize(shape: ICardShape, info: TLResizeInfo<ICardShape>) {
 		return resizeBox(shape, info)
 	}
+
+	override toSvg(shape: ICardShape, ctx: SvgExportContext): ReactElement | null {
+		// 获取当前主题颜色（考虑暗黑模式）
+		const theme = getDefaultColorTheme({ isDarkMode: ctx.isDarkMode });
+		// 获取卡片的背景色
+		const backgroundColor = theme[shape.props.color].semi;
+		// 获取卡片的边框/文字颜色
+		const textColor = theme[shape.props.color].solid;
+
+		// 返回一个 SVG 组合，包含背景矩形和提示文字
+		return (
+			<g>
+				<rect
+					width={shape.props.w}
+					height={shape.props.h}
+					fill={backgroundColor}
+					stroke={textColor} // 使用文字颜色作为边框色
+					strokeWidth={1}
+				/>
+				<text
+					x={shape.props.w / 2} // 水平居中
+					y={shape.props.h / 2} // 垂直居中
+					textAnchor="middle" // 水平对齐方式
+					dominantBaseline="middle" // 垂直对齐方式
+					fill={textColor} // 文字颜色
+					fontSize={Math.min(shape.props.w / 10, shape.props.h / 5, 16)} // 动态调整字体大小，最大16
+					fontFamily="sans-serif"
+				>
+					要完整内容请自行截图
+				</text>
+			</g>
+		);
+	}
+
+
 }
 /* 
 A utility class for the card shape. This is where you define the shape's behavior, 

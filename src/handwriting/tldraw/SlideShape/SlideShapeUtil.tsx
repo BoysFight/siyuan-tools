@@ -11,17 +11,23 @@ import {
 	getPerfectDashProps,
 	resizeBox,
 	useValue,
+	DefaultColorStyle,
 	stopEventPropagation, // 导入 stopEventPropagation
-	useEditor, // 导入 useEditor
+	useEditor,
+	TLDefaultColorStyle,
+	getDefaultColorTheme, // 导入 useEditor
 } from '@tldraw/tldraw'
 import { moveToSlide, useSlides } from './useSlides'
+import { slideShapeMigrations } from './SlideShapeMigrations'
 
 export type SlideShape = TLBaseShape<
 	'slide',
 	{
 		w: number
 		h: number
-		name: string // 添加 name 属性
+		name?: string // 添加 name 属性
+		version?: number // 添加 version 属性定义
+		color: TLDefaultColorStyle
 	}
 >
 
@@ -30,8 +36,11 @@ export class SlideShapeUtil extends ShapeUtil<SlideShape> {
 	static override props: RecordProps<SlideShape> = {
 		w: T.number,
 		h: T.number,
-		name: T.string, // 添加 name 属性
+		name: T.optional(T.string), // 添加 name 属性
+		version: T.optional(T.number), // 添加 version 属性定义
+		color: DefaultColorStyle, // 添加 color 属性定义
 	}
+	static override migrations = slideShapeMigrations
 
 	override canBind() {
 		return false
@@ -45,6 +54,8 @@ export class SlideShapeUtil extends ShapeUtil<SlideShape> {
 			w: 720,
 			h: 480,
 			name: 'New Slide', // 设置默认名称
+			color: 'black', 
+			// version: 1, // 设置默认版本
 		}
 	}
 
@@ -77,24 +88,15 @@ export class SlideShapeUtil extends ShapeUtil<SlideShape> {
 	}
 
 	component(shape: SlideShape) {
+		const theme = getDefaultColorTheme({ isDarkMode: this.editor.user.getIsDarkMode() })
 		const bounds = this.editor.getShapeGeometry(shape).bounds
 		const editor = useEditor() // 获取 editor 实例
 		// eslint-disable-next-line react-hooks/rules-of-hooks
 		const zoomLevel = useValue('zoom level', () => this.editor.getZoomLevel(), [this.editor])
-
-		// eslint-disable-next-line react-hooks/rules-of-hooks
-		// const slides = useSlides()
-		// const index = slides.findIndex((s) => s.id === shape.id)
-		// --- State for inline editing ---
-		// eslint-disable-next-line react-hooks/rules-of-hooks
 		const [isEditing, setIsEditing] = useState(false)
-		// eslint-disable-next-line react-hooks/rules-of-hooks
 		const [editText, setEditText] = useState(shape.props.name)
-		// eslint-disable-next-line react-hooks/rules-of-hooks
 		const inputRef = useRef<HTMLInputElement>(null)
-		// --- End State ---
-		// eslint-disable-next-line react-hooks/rules-of-hooks
-		// eslint-disable-next-line react-hooks/rules-of-hooks
+
 		useEffect(() => {
 			// Update local text state if the shape's name prop changes externally
 			if (!isEditing) {
@@ -178,59 +180,67 @@ export class SlideShapeUtil extends ShapeUtil<SlideShape> {
 
 		return (
 			<>
-                <div
-                    className="slide-shape-label"
-                    style={{
-                        position: 'absolute',
-                        top: `calc(-25px / ${zoomLevel})`, // Adjust position based on zoom
-                        left: 0,
-                        width: shape.props.w,
-                        textAlign: 'center',
-                        cursor: 'default', // Change cursor as it's not directly editable here
-                        zIndex: 1,
-                        fontSize: `calc(12px / ${zoomLevel})`, // Adjust font size based on zoom
-                        pointerEvents: 'none', // Prevent label from interfering with selection
-                        color: 'var(--color-text)', // Ensure visibility
-                    }}
-                >
-                    {shape.props.name || `Slide`}
-                </div>
+				<div
+					className="slide-shape-label"
+					style={{
+						position: 'absolute',
+						top: `calc(-25px / ${zoomLevel})`, // Adjust position based on zoom
+						left: 0,
+						width: shape.props.w,
+						textAlign: 'center',
+						cursor: 'default', // Change cursor as it's not directly editable here
+						zIndex: 1,
+						fontSize: `calc(12px / ${zoomLevel})`, // Adjust font size based on zoom
+						pointerEvents: 'none', // Prevent label from interfering with selection
+						color: theme[shape.props.color].solid, // Ensure visibility
+					}}
+				>
+					{shape.props.name || `Slide`}
+				</div>
 
 				<SVGContainer>
-					<g
-						style={{
-							stroke: 'var(--color-text)',
-							strokeWidth: 'calc(1px * var(--tl-scale))',
-							opacity: 0.25,
-						}}
-						pointerEvents="none"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-					>
-						{bounds.sides.map((side, i) => {
-							const { strokeDasharray, strokeDashoffset } = getPerfectDashProps(
-								side[0].dist(side[1]),
-								1 / zoomLevel,
-								{
-									style: 'dashed',
-									lengthRatio: 6,
-									forceSolid: zoomLevel < 0.2,
-								}
-							)
+                    {/* Background Rectangle */}
+                    <rect
+                        width={shape.props.w}
+                        height={shape.props.h}
+                        fill={theme[shape.props.color].solid}
+                        fillOpacity={0.08} // Add a subtle background fill
+                    />
+                    {/* Dashed Border Outline */}
+                    <g
+                        style={{
+                            stroke: theme[shape.props.color].solid, // Use shape's color for border
+                            strokeWidth: 'calc(1px * var(--tl-scale))',
+                            opacity: 0.5, // Adjust opacity for better visibility
+                        }}
+                        pointerEvents="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        {bounds.sides.map((side, i) => {
+                            const { strokeDasharray, strokeDashoffset } = getPerfectDashProps(
+                                side[0].dist(side[1]),
+                                1 / zoomLevel,
+                                {
+                                    style: 'dashed',
+                                    lengthRatio: 6,
+                                    forceSolid: zoomLevel < 0.2,
+                                }
+                            )
 
-							return (
-								<line
-									key={i}
-									x1={side[0].x}
-									y1={side[0].y}
-									x2={side[1].x}
-									y2={side[1].y}
-									strokeDasharray={strokeDasharray}
-									strokeDashoffset={strokeDashoffset}
-								/>
-							)
-						})}
-					</g>
+                            return (
+                                <line
+                                    key={i}
+                                    x1={side[0].x}
+                                    y1={side[0].y}
+                                    x2={side[1].x}
+                                    y2={side[1].y}
+                                    strokeDasharray={strokeDasharray}
+                                    strokeDashoffset={strokeDashoffset}
+                                />
+                            )
+                        })}
+                    </g>
 				</SVGContainer>
 			</>
 		)
