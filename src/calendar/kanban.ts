@@ -129,23 +129,19 @@ const CustomViewConfig = {
                     let newStatus = '';
                     if (completedBlockSubs === totalBlockSubs) {
                         newStatus = '完成';
-                    } else if (completedBlockSubs > 0) {
-                        newStatus = '进行中';
-                    } else {
-                        newStatus = '未完成';
+                        // 只有当状态不同时才更新
+                        if (event.extendedProps.status !== newStatus) {
+                            // 使用已有的状态更改函数，传入新状态
+                            const selectdata: ISelectOption[] = [{ content: newStatus }];
+                            // 异步更新状态，不阻塞渲染
+                            setTimeout(() => {
+                                myK.run_changestatus(event, selectdata)
+                                    .then(() => console.log(`自动更新事件状态: ${event.title} -> ${newStatus}`))
+                                    .catch(err => console.error('自动更新状态失败:', err));
+                            }, 100);
+                        }
                     }
 
-                    // 只有当状态不同时才更新
-                    if (event.extendedProps.status !== newStatus) {
-                        // 使用已有的状态更改函数，传入新状态
-                        const selectdata: ISelectOption[] = [{ content: newStatus }];
-                        // 异步更新状态，不阻塞渲染
-                        setTimeout(() => {
-                            myK.run_changestatus(event, selectdata)
-                                .then(() => console.log(`自动更新事件状态: ${event.title} -> ${newStatus}`))
-                                .catch(err => console.error('自动更新状态失败:', err));
-                        }, 100);
-                    }
                 }
             }
             //////////////////////////////////////
@@ -154,9 +150,9 @@ const CustomViewConfig = {
     <div class="progress-container">
         <svg class="progress-ring" width="20" height="20" viewBox="0 0 20 20">
             <circle class="progress-ring-bg" r="8" cx="10" cy="10" />
-            <circle class="progress-ring-circle" 
-                r="8" 
-                cx="10" 
+            <circle class="progress-ring-circle"
+                r="8"
+                cx="10"
                 cy="10"
                 style="stroke-dasharray: ${2 * Math.PI * 8};
                        stroke-dashoffset: ${2 * Math.PI * 8 * (1 - progressPercent / 100)}"
@@ -171,9 +167,9 @@ const CustomViewConfig = {
     <div class="progress-container block-progress" title="块内子事件完成进度">
         <svg class="progress-ring" width="20" height="20" viewBox="0 0 20 20">
             <circle class="progress-ring-bg" r="8" cx="10" cy="10" />
-            <circle class="progress-ring-circle block-progress-circle" 
-                r="8" 
-                cx="10" 
+            <circle class="progress-ring-circle block-progress-circle"
+                r="8"
+                cx="10"
                 cy="10"
                 style="stroke-dasharray: ${2 * Math.PI * 8};
                        stroke-dashoffset: ${2 * Math.PI * 8 * (1 - blockProgressPercent / 100)}"
@@ -184,8 +180,8 @@ const CustomViewConfig = {
 ` : '';
 
             return `
-                <div class="kanban-card ${isRecurring ? 'recurring-event no-drag' : ''}" 
-                data-id="${event.publicId}" 
+                <div class="kanban-card ${isRecurring ? 'recurring-event no-drag' : ''}"
+                data-id="${event.publicId}"
                 data-block-id="${event.extendedProps.blockId}"
                 data-start-date="${event.range.start instanceof Date ? event.range.start.toISOString().split('T')[0] : ''}"
                 ${isRecurring ? 'data-recurring="true"' : ''}>
@@ -706,5 +702,3 @@ async function handleStatusChange(Fr_event, parentEl) {
     await myK.run_changestatus(Fr_event, selectdata);
     logDebug(`${Fr_event.title} 状态更改为 ${newcategory}`);
 }
-
-

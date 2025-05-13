@@ -921,7 +921,7 @@ export async function run(
 
             try {
                 if (info.event._def === undefined) return;
-                if (info && info.event && info.event.extendedProps && info.event.extendedProps.status === '完成') {
+                if (info && info.event && info.event.extendedProps && (info.event.extendedProps.status === '完成' || info.event.extendedProps.status === '归档')) {
                     // 应用完成状态的样式
                     info.el.style.textDecoration = 'line-through';
                     if (settingdata["cal-event-color"]) {
