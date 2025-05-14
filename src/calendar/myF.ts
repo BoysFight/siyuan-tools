@@ -537,9 +537,56 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         }
         const datata = await api.updateAttrViewCell_pro(direct.directid, to_db_id, timeKeyID, dateStr, "date");
         const selectdata: ISelectOption[] = [{ content: status }];
-        // console.log("selectdata", selectdata);
         await api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, selectdata, "select");
         await api.updateAttrViewCell_pro(direct.directid, to_db_id, checkboxKeyID, ismain, "checkbox");
+
+        // 获取父级块ID
+        // 添加获取最近上级列表项块的辅助函数
+        async function findNearestParentListItemBlock(blockId: string): Promise<string | null> {
+            let currentBlock = await api.getBlockByID(blockId);
+
+            while (currentBlock && currentBlock.parent_id) {
+                const parentBlock = await api.getBlockByID(currentBlock.parent_id);
+                if (parentBlock && parentBlock.type === 'i') {  // 'i' 表示列表项块
+                    return parentBlock.id;
+                }
+                currentBlock = parentBlock;
+            }
+            return null;
+        }
+
+        // 获取最近的上级列表项块ID
+        const parentListItemId = await findNearestParentListItemBlock(direct.directid);
+
+        if (parentListItemId) {
+            const parentInDatabase = await checkBlockInEvent(parentListItemId, to_db_id);
+            if (parentInDatabase) {
+                // 获取关联列的ID
+                const relationKeyID = await getKeyIDfromViewValue(viewValue, "子级", to_db_id);
+                const parentListItemValue = await getBlockValuesFromViewValue(viewValue, parentListItemId, to_db_id);
+                const subItems = parentListItemValue.subItems
+
+                if (relationKeyID && subItems) {
+
+                    // 更新父事件的关联字段，保留原有关联
+                    await api.updateAttrViewCell_pro(
+                        parentListItemId,
+                        to_db_id,
+                        relationKeyID,
+                        {
+                            blockID: direct.directid,
+                            content: title,
+                            action: "add",
+                            oldrelation: {
+                                ids: subItems?.ids || [],
+                                contents: subItems?.contents || []
+                            }
+                        },
+                        "relation",
+                    )
+                }
+            }
+        }
         sy.showMessage('已添加事件', 2000, "info", "1");
         return true;
     }
@@ -580,9 +627,9 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
                                     <option value="" selected>加载中...</option>
                                 </select>
                                 <div style="display: flex; align-items: center;">
-                                    <input type="datetime-local" 
+                                    <input type="datetime-local"
                                     id="st-start-time"
-                                    class="b3-text-field" 
+                                    class="b3-text-field"
                                     style="padding: 4px; font-size: 12px; width: 130px;"
                                     value="${formatDateWithTime(dateStr)}"/>
                                 </div>
@@ -818,6 +865,38 @@ export async function updateEventInDatabase(
 }
 
 
+/**
+ * 从 viewValue 中获取指定块 ID 对应的所有字段值
+ * @param viewValue 视图数据
+ * @param blockId 块ID
+ * @param rootid 根ID
+ * @returns 返回匹配块的所有字段值
+ */
+async function getBlockValuesFromViewValue(viewValue: any[], blockId: string, rootid: string): Promise<{[key: string]: any}> {
+    // 遍历所有视图数据
+    for (const view of viewValue) {
+        if (view?.from?.rootid === rootid) {
+            for (const item of view.data) {
+                // 检查事件ID是否匹配
+                if (item['事件']?.id === blockId) {
+                    // 构建返回对象，包含所有字段的值
+                    return {
+                        mainEvent: item['主事件'] || {},
+                        event: item['事件'] || {},
+                        priority: item['优先级'] || {},
+                        category: item['分类'] || {},
+                        subItems: item['子级'] || {},
+                        startTime: item['开始时间'] || {},
+                        description: item['描述'] || {},
+                        status: item['状态'] || {},
+                    };
+                }
+            }
+        }
+    }
+    // 如果没有找到匹配的块，返回空对象
+    return {};
+}
 
 async function getKeyIDfromViewValue(viewValue: any, key: string, rootid: string): Promise<string | undefined> {
     // First try to get keyID from existing viewValue
