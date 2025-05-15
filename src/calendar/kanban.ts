@@ -551,7 +551,7 @@ function convertEventsToNested(events: KBCalendarEvent[], includeReferencedEvent
         return clonedEvent;
     }
     // 先构建所有事件的引用关系
-    allEvents.forEach(event => {
+    events.forEach(event => {
         if (event.extendedProps.sub?.ids) {
             event.extendedProps.sub.ids.forEach(id => {
                 referencedEvents.add(id);
