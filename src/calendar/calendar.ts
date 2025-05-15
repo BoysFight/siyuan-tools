@@ -57,6 +57,7 @@ export async function run(
     cleft = 'prev,next today viewFilter',
     cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban',
     ccenter = 'title',
+    elementca?: any,
 ) {
     // filterViewId = S_viewID ? [S_viewID] : (viewId ? viewId.split(',') : []);
     const savedViewId = moduleInstances['M_calendar'].calConfig.get('viewId');
@@ -82,7 +83,10 @@ export async function run(
         // 创建悬浮容器
         const Fcalendar = createFloatingCalendar(calendarEl);
         calendarEl = Fcalendar.element;
-    } else {
+    } else if (id === "2") {//日历内插入视图逻辑
+        calendarEl = elementca.getElementById(`calendar-2`);
+    }
+    else {
         calendarEl = document.getElementById(`calendar-${id}`)!;
     }
     if (!calendarEl) {

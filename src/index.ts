@@ -60,6 +60,10 @@ export default class steveTools extends Plugin {
         if (data["cal-enable"] == true) {
             this.loadModule(M_calendar, 'M_calendar');
             console.log("日历模块加载");
+            if (settingdata["PluginUsageStatistics"]) {
+                // console.log("统计");
+                api.getFromApi2("/STcal");
+            }
         }
         if (data["sync-enable"] == true) {
             this.loadModule(M_sync, 'M_sync');
@@ -77,6 +81,10 @@ export default class steveTools extends Plugin {
         if (data["handwriting-enable"] == true) {
             this.loadModule(M_handwriting, 'M_handwriting');
             console.log("画板模块加载");
+            if (settingdata["PluginUsageStatistics"]) {
+                // console.log("统计");
+                api.getFromApi2("/SThandwriting");
+            }
         }
 
         if (data["lifelog-enable"] == true) {
@@ -89,6 +97,7 @@ export default class steveTools extends Plugin {
     // private isMobile: boolean;
     // private settingUtils: SettingUtils;
     async onload() {
+
         frontEnd = window.siyuan.config.system.os;
         this.addIcons(`
     <symbol id="iconST" viewBox="0 0 512 512">
@@ -110,7 +119,6 @@ export default class steveTools extends Plugin {
             steveTools.outlog("init--" + moduleName);
             await moduleInstances[moduleName]?.init?.(settingdata);
         }
-
     }
 
     async onLayoutReady() {

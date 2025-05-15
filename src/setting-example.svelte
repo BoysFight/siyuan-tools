@@ -464,6 +464,32 @@
                     key: "cal-event-color",
                     value: settings["cal-event-color"],
                 },
+                {
+                    type: "select",
+                    title: "默认日历视图模式",
+                    description: "选择日历默认打开的视图模式",
+                    key: "cal-default-view",
+                    value: settings["cal-default-view"],
+                    options: {
+                        multiMonthYear: "MultiMonthYear",
+                        dayGridMonth: "DayGridMonth",
+                        timeGridWeek: "TimeGridWeek",
+                        timeGridThreeDays: "TimeGridThreeDays",
+                        timeGridDay: "TimeGridDay",
+                    },
+                },
+                {
+                    type: "select",
+                    title: "默认看板视图模式",
+                    description: "选择看板默认打开的视图模式",
+                    key: "kanban-default-view",
+                    value: settings["kanban-default-view"],
+                    options: {
+                        weekkanban: "WeekKanban",
+                        kanban: "Kanban",
+                        yearkanban: "YearKanban",
+                    },
+                },
             ],
         },
         {
@@ -568,7 +594,7 @@
             items: [
                 {
                     type: "checkbox",
-                    title: "启用画板功能（测试中，请勿在重要空间中使用！！）",
+                    title: "启用画板功能",
                     description: "启用后可以在编辑器中使用画板功能",
                     key: "handwriting-enable",
                     value: settings["handwriting-enable"],
@@ -604,7 +630,8 @@
                 {
                     type: "checkbox",
                     title: "同步删除(不建议启用)",
-                    description: "启用后在画板删除块时会同步删除笔记中的块（无法撤回）",
+                    description:
+                        "启用后在画板删除块时会同步删除笔记中的块（无法撤回）",
                     key: "SyncDelete",
                     value: settings["SyncDelete"],
                 },
@@ -653,18 +680,34 @@
             ],
         },
         {
-            name: "✨敬请期待。。",
+            name: "通用设置",
             items: [
                 {
+                    type: "checkbox",
+                    title: "允许匿名统计",
+                    description:
+                        "是否允许插件匿名统计使用情况，仅仅为了统计插件的使用人数，以决策之后的开发方向（只发起了一个get请求[细节见插件源码]，不会发送任何隐私数据）",
+                    key: "PluginUsageStatistics",
+                    value: settings["PluginUsageStatistics"], // 默认为true
+                },
+                {
                     type: "button",
-                    title: "button",
-                    description: "This is a button",
+                    title: "今日本插件使用情况",
+                    description: "查看本插件的使用情况",
                     key: "e",
-                    value: "Click Button",
+                    value: "查看",
                     button: {
-                        label: "Click Me",
-                        callback: () => {
-                            showMessage("Hello, world!");
+                        label: "查看",
+                        callback: async () => {
+                            if (!settings["PluginUsageStatistics"]) {
+                                showMessage(
+                                    "请先允许匿名统计才能查看此插件的使用情况",
+                                );
+                                return;
+                            }
+                            const data = await myapi.getFromApi2("/admin");
+                            // console.log(data);
+                            showMessage(`人数：${data.data}`);
                         },
                     },
                 },
@@ -786,7 +829,7 @@
             ics设置: 7,
             ics分享: 9,
             订阅日历: 6,
-            视图设置: 6,
+            视图设置: 8,
             // 不限制
         },
         画板: {

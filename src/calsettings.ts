@@ -51,7 +51,9 @@ export const defaultSettings = {
     "cal-slot-min-time": "00:00:00",
     "cal-slot-max-time": "24:00:00",
     "cal-snap-duration": "00:30:00",
-    "cal-event-color": false,
+    "cal-event-color": true,
+    "kanban-default-view": "kanban",
+    "cal-default-view": "dayGridMonth",
     // 同步模块
     "sync-enable": false,
     "sync-url": "http://localhost:8080",
@@ -76,6 +78,8 @@ export const defaultSettings = {
     "isGridMode": false, // 是否开启网格模式
     "copyLinkTitle": true, // 是否复制标题
     'SyncDelete': false, // 是否同步删除
+    //插件通用配置
+    "PluginUsageStatistics": true, // 是否开启插件使用统计
 };
 
 export function getSettings() {
