@@ -182,7 +182,7 @@ export class M_calendar {
                 <div id="calendar-${id}" class="cal-dock-container" ></div>
                 `;
                 setTimeout(async () => {
-                    D_calendar = await run(id, 'kanban', '', 'title', 'today,viewFilter,prev,next', '');
+                    D_calendar = await run(id, 'weekkanban', '', 'title', 'today,viewFilter,prev,next', '');
                     refreshKanban();
                 }, 100);
             },
@@ -564,7 +564,7 @@ export class M_calendar {
         }, 500); // 延迟 500 毫秒
     }
 
-    async openRiChengViewDialog(isMobile: boolean = false, viewID = "", initialView = "dayGridMonth") {
+    async openRiChengViewDialog(isMobile: boolean = false, viewID = "", initialView = "timeGridWeek") {
 
         const id = new Date().getTime().toString();
         let calendar: any;
@@ -582,7 +582,7 @@ export class M_calendar {
 
         setTimeout(async () => {
             if (viewID) {
-                calendar = await run(id, initialView, viewID, 'prev,next today');
+                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle');
             } else {
                 calendar = await run(id, initialView);
             }

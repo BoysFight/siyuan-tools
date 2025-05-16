@@ -98,6 +98,7 @@ const CustomViewConfig = {
             const starttime = new Date(event.extendedProps.Kstart).toLocaleString();
             let endtime = '';
             let nowToEndTime;
+
             // console.log('event.extendedProps.priority:', event);
             //周期事件处理
             const isRecurring = event.extendedProps?.isRecurring;
@@ -144,6 +145,9 @@ const CustomViewConfig = {
 
                 }
             }
+            // 添加删除线样式类
+            const titleStyle = event.extendedProps.status === '完成' ? 'text-decoration: line-through;' : '';
+
             //////////////////////////////////////
             // 生成SVG环形进度图
             const progressCircle = totalSubtasks ? `
@@ -187,8 +191,8 @@ const CustomViewConfig = {
                 ${isRecurring ? 'data-recurring="true"' : ''}>
                     <div class="kanban-card-header">
                         <h3>${isRecurring ?
-                    `<span>${event.title}</span>` :
-                    `<span class="st-ref" data-type="block-ref" data-id="${event.extendedProps.blockId}" data-subtype="d">${event.title}</span>`
+                    `<span style="${titleStyle}">${event.title}</span>` :
+                    `<span class="st-ref" style="${titleStyle}" data-type="block-ref" data-id="${event.extendedProps.blockId}" data-subtype="d">${event.title}</span>`
                 }
                          ${isRecurring ? '<span class="recurring-icon" title="周期事件">🔄</span>' : ''}
                          </h3>

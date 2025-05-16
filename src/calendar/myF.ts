@@ -15,7 +15,7 @@ import { createDailynote } from '@frostime/siyuan-plugin-kits';
 export const statusMap = new Proxy({
     // 保留原有的映射关系作为已知状态
     "未完成": "todo",
-    "完成": "done", 
+    "完成": "done",
     "进行中": "inprogress",
     "归档": "archive",
 }, {
@@ -24,7 +24,7 @@ export const statusMap = new Proxy({
         if (typeof prop === 'string' && prop in target) {
             return target[prop];
         }
-        
+
         // 对于未知状态，生成一个规范化的代码
         if (typeof prop === 'string') {
             // 将中文或其他语言的状态名转换为英文标识符:
@@ -35,11 +35,11 @@ export const statusMap = new Proxy({
                 .toLowerCase()
                 .replace(/\s+/g, '')
                 .replace(/[^\w\u4e00-\u9fa5]/gi, '');
-            
+
             // 如果处理后为空字符串，返回默认状态
             return code || 'todo';
         }
-        
+
         // 任何异常情况返回默认状态
         return 'todo';
     }
@@ -561,6 +561,8 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         if (noteKeyID && note) {
             await api.updateAttrViewCell_pro(direct.directid, to_db_id, noteKeyID, note, "text");
         }
+        // 添加200ms延时
+        await new Promise(resolve => setTimeout(resolve, 200));
         const datata = await api.updateAttrViewCell_pro(direct.directid, to_db_id, timeKeyID, dateStr, "date");
         const selectdata: ISelectOption[] = [{ content: status }];
         await api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, selectdata, "select");
