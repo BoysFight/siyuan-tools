@@ -122,8 +122,14 @@ export function getDaysFromNow(time: string | Date, status: string): string {
     }
     const targetDate = new Date(time);
     const now = new Date();
+    
+    // 将两个日期都设置为当天的 00:00:00
+    targetDate.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
+    
+    // 计算天数差
     const diffTime = targetDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays > 0) {
         return `<span style="color: green">还有${diffDays}天</span>`;
