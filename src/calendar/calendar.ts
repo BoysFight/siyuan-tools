@@ -1033,6 +1033,9 @@ export async function run(
     return calendar;
 }
 
+
+
+
 function displayStatusDropZone(calendarEl: HTMLElement, info) {
     let statusDropZone = document.getElementById('status-drop-zone');
     if (!statusDropZone) {
@@ -1361,3 +1364,15 @@ function formatTime(date: Date): string {
         hour12: false
     });
 }
+
+//暴露给全局
+const waytocal = {
+    run
+}
+declare global {
+    interface Window {
+        calendar: typeof waytocal;
+    }
+}
+window.calendar=waytocal;
+
