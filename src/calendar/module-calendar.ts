@@ -23,6 +23,7 @@ import { WebDAVSync } from "./share/webdav";
 import { ICSSubscription } from "./share/ics_discribe";
 import { Calendar } from "@fullcalendar/core";
 import { insertHtml, THIS } from "./insertHtml";
+import { ICSImporter } from "./ics/ics_siyuan";
 
 
 
@@ -146,6 +147,9 @@ export class M_calendar {
                     // await this.generateICSFromEventsFile(eventsPath, calendarpath);
                 }
             });
+        }
+        if (this_settingdata["cal-ics-subscribe-import"] == true) {
+            const icsImporter = new ICSImporter(this.plugin);
         }
         if (this_settingdata["cal-show-view"] == true) {
             const topBarElement = this.plugin.addTopBar({
@@ -430,7 +434,11 @@ export class M_calendar {
                     console.log("c", cursorElementId);
                 }
                 console.log("cursorElement", cursorElementId);
-                const blockId = cursorElementId || pro?.breadcrumb?.id;
+                const blockId = cursorElementId
+                if(!blockId) {
+                    showMessage("请先选中一个块", 3000, "error");
+                    return;
+                }
                 // console.log("pro", blockId);
                 // console.log("创建日程（光标所在块）", blockId);
                 handleAddButtonClick('', { isdirect: true, directid: blockId });
