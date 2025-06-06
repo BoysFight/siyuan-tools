@@ -817,28 +817,8 @@
                 value: settings["cal-dida-test"],
                 button: {
                     label: "测试",
-                    callback: () => {
-                        try {
-                            // 这里需要调用测试连接的方法
-                            showMessage("正在测试滴答清单连接...");
-                            // moduleInstances["M_sync"].testDidaConnection();
-                        } catch (error) {
-                            showMessage(`测试连接失败: ${error.message}`);
-                        }
-                    },
-                },
-            },
-            {
-                type: "button",
-                title: "立即同步",
-                description: "立即执行一次同步操作",
-                key: "cal-dida-sync-now",
-                value: settings["cal-dida-sync-now"],
-                button: {
-                    label: "同步",
                     callback: async () => {
                         try {
-                            // 检查模块是否已加载
                             if (!moduleInstances["M_sync"]) {
                                 showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
                                 return;
@@ -854,8 +834,42 @@
                                 return;
                             }
 
-                            showMessage("正在同步到滴答清单...");
-                            await moduleInstances["M_sync"].syncToDidaList();
+                            showMessage("正在同步到滴答清单，请稍候...");
+                            await moduleInstances["M_sync"].manualTestDidaProjectTasks();
+                        } catch (error) {
+                            console.error("同步失败:", error);
+                            showMessage(`同步失败: ${error.message}`, -1, "error");
+                        }
+                    },
+                },
+            },
+            {
+                type: "button",
+                title: "立即同步",
+                description: "立即执行一次同步操作",
+                key: "cal-dida-sync-now",
+                value: settings["cal-dida-sync-now"],
+                button: {
+                    label: "同步",
+                    callback: async () => {
+                        try {
+                            if (!moduleInstances["M_sync"]) {
+                                showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
+                                return;
+                            }
+                            if (!moduleInstances["M_calendar"]) {
+                                showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
+                                return;
+                            }
+
+                            // 检查必要配置
+                            if (!settings["cal-dida-username"] || !settings["cal-dida-password"]) {
+                                showMessage("请先配置滴答清单用户名和密码", -1, "error");
+                                return;
+                            }
+
+                            showMessage("正在同步到滴答清单，请稍候...");
+                            await moduleInstances["M_sync"].manualDidaSync();
                         } catch (error) {
                             console.error("同步失败:", error);
                             showMessage(`同步失败: ${error.message}`, -1, "error");

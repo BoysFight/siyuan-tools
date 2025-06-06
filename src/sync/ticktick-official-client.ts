@@ -29,6 +29,40 @@ export interface TickTickProject {
     isOwner?: boolean;
 }
 
+export interface TickTickProjectData {
+    project: TickTickProject & {
+        closed: boolean;
+        groupId?: string;
+        viewMode: string;
+        kind: string;
+    };
+    tasks: (TickTickTask & {
+        isAllDay?: boolean;
+        desc?: string;
+        timeZone?: string;
+        repeatFlag?: string;
+        reminders?: string[];
+        completedTime?: string;
+        sortOrder?: number;
+        items?: {
+            id: string;
+            status: number;
+            title: string;
+            sortOrder: number;
+            startDate?: string;
+            isAllDay: boolean;
+            timeZone: string;
+            completedTime?: string;
+        }[];
+    })[];
+    columns?: {
+        id: string;
+        projectId: string;
+        name: string;
+        sortOrder: number;
+    }[];
+}
+
 export class TickTickOfficialClient {
     private config: TickTickOfficialConfig;
     private baseUrl: string;
@@ -229,5 +263,12 @@ export class TickTickOfficialClient {
             this.config.refreshToken = tokenData.refresh_token;
         }
         return tokenData;
+    }
+
+    /**
+     * 获取项目数据（包含项目信息、任务列表和列信息）
+     */
+    async getProjectData(projectId: string): Promise<TickTickProjectData> {
+        return this.request(`project/${projectId}/data`);
     }
 }
