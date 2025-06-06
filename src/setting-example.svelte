@@ -746,12 +746,12 @@
             ],
         },
         {
-        name: "滴答清单同步",
+        name: "滴答清单",
         items: [
             {
                 type: "checkbox",
                 title: "启用滴答清单同步",
-                description: "启用后可以将思源笔记的任务同步到滴答清单",
+                description: "启用后开启将思源笔记的任务同步到滴答清单功能",
                 key: "cal-dida-enable",
                 value: settings["cal-dida-enable"],
             },
@@ -797,10 +797,10 @@
             },
             {
                 type: "checkbox",
-                title: "启用自动同步",
-                description: "启用后会根据设置的间隔自动同步任务",
-                key: "cal-dida-auto-sync",
-                value: settings["cal-dida-auto-sync"],
+                title: "自动同步滴答清单",
+                description: "同步触发后自动同步滴答清单",
+                key: "docker-sync-auto-trigger-dida",
+                value: settings["docker-sync-auto-trigger-dida"],
             },
             {
                 type: "textinput",

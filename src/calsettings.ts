@@ -91,11 +91,11 @@ export const defaultSettings = {
     "cal-dida-password": "", // 滴答清单密码
     "cal-dida-use-official-api": true, // 滴答清单官方API
     "cal-dida-official-access-token": "", // 滴答清单API令牌
-    "cal-dida-official-client-id": "", // 滴答清单API令牌
-    "cal-dida-official-client-secret": "", // 滴答清单API令牌
+    "cal-dida-official-client-id": "", // 滴答清单API client-id
+    "cal-dida-official-client-secret": "", // 滴答清单API client-secret
     "cal-dida-sync-direction": "siyuan-to-dida", // 同步方向：siyuan-to-dida, dida-to-siyuan, both
     "cal-dida-sync-interval": 30, // 同步间隔（分钟）
-    "cal-dida-auto-sync": false, // 是否自动同步
+    "docker-sync-auto-trigger-dida": false, // 是否自动同步
     "cal-dida-default-list-id": "", // 默认任务列表ID
 };
 

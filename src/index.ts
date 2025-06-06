@@ -65,10 +65,10 @@ export default class steveTools extends Plugin {
                 api.getFromApi2("/STcal");
             }
         }
-        if (data["sync-enable"] == true) {
+        // if (data["sync-enable"] == true) {
             this.loadModule(M_sync, 'M_sync');
             console.log("同步模块加载");
-        }
+        // }
         if (data["ai-enable"] == true) {
             this.loadModule(M_ai, 'M_ai');
             console.log("ai模块加载");

@@ -16,6 +16,8 @@ export class M_sync {
     private plugin: steveTools;
     private settingdata: any;
     private officialClient?: TickTickOfficialClient;
+    private dockerSyncEnabled: boolean = false;
+    private didaSyncEnabled: boolean = false;
 
     constructor(plugin: steveTools) {
         this.plugin = plugin;
@@ -24,17 +26,51 @@ export class M_sync {
     init = async (settingdata) => {
         this.settingdata = settingdata;
         steveTools.outlog("同步模块初始化中...");
-        url = settingdata["sync-url"];
-        token = settingdata["sync-token"];
-        
-        // 设置docker感知同步监听
-        this.setupDockerSyncListener();
-        
+
+        // 分别初始化docker感知和滴答清单同步
+        await this.initDockerSync();
+        await this.initDidaSync();
+
         steveTools.outlog("同步模块初始化完成");
     }
 
-    // 新增：docker感知同步功能
+    // 独立的docker感知同步初始化
+    private async initDockerSync() {
+        this.dockerSyncEnabled = this.settingdata["docker-sync-enable"];
+        if (this.dockerSyncEnabled) {
+            url = this.settingdata["docker-sync-url"] || this.settingdata["sync-url"]; // 兼容旧配置
+            token = this.settingdata["docker-sync-token"] || this.settingdata["sync-token"]; // 兼容旧配置
+            this.setupDockerSyncListener();
+            steveTools.outlog("Docker感知同步已启用");
+        }
+    }
+
+    // 独立的滴答清单同步初始化
+    private async initDidaSync() {
+        this.didaSyncEnabled = this.settingdata["cal-dida-enable"];
+        if (this.didaSyncEnabled) {
+            // 初始化官方客户端
+            if (this.settingdata["cal-dida-use-official-api"]) {
+                // 初始化官方客户端
+                this.officialClient = new TickTickOfficialClient({
+                    clientId: this.settingdata["cal-dida-official-client-id"] || "",
+                    clientSecret: this.settingdata["cal-dida-official-client-secret"] || "",
+                    accessToken: this.settingdata["cal-dida-official-access-token"] || undefined,
+                    refreshToken: this.settingdata["cal-dida-official-refresh-token"] || undefined
+                });
+                // 如果设置了access token，直接使用，不走refresh流程
+                if (this.settingdata["cal-dida-official-access-token"]) {
+                    this.officialClient.setAccessToken(this.settingdata["cal-dida-official-access-token"]);
+                }
+            }
+            steveTools.outlog("滴答清单同步已启用");
+        }
+    }
+
+    // 修改docker感知监听器，解耦滴答清单同步
     private setupDockerSyncListener() {
+        if (!this.dockerSyncEnabled) return;
+
         siyuan.ws.ws.addEventListener('message', async (e) => {
             const msg = JSON.parse(e.data);
             if (msg.cmd === "syncing") {
@@ -46,8 +82,9 @@ export class M_sync {
                     } else {
                         setTimeout(async () => {
                             await this.handleDockerSync();
-                            // 检测到同步事件后调用滴答清单同步
-                            if (this.settingdata["cal-dida-auto-sync"]) {
+
+                            // 可选：docker同步后自动触发滴答清单同步
+                            if (this.settingdata["docker-sync-auto-trigger-dida"] && this.didaSyncEnabled) {
                                 await this.syncToDidaList();
                             }
                         }, 1000);
@@ -57,8 +94,13 @@ export class M_sync {
         });
     }
 
-    // 新增：处理docker同步
+    // 独立的docker同步处理方法
     private async handleDockerSync() {
+        if (!this.dockerSyncEnabled) {
+            console.log("Docker感知同步未启用");
+            return;
+        }
+
         try {
             let originalIcon = "";
             const iconElement = document.querySelector('#plugin_siyuan-steve-tools_0 svg use');
@@ -66,11 +108,11 @@ export class M_sync {
                 originalIcon = iconElement.getAttribute('xlink:href');
                 iconElement.setAttribute('xlink:href', '#iconHistory');
             }
-            
+
             const state = await api.URLsync(url, token);
             if (state) {
                 console.log("docker感知成功");
-                if (originalIcon) {
+                if (originalIcon && iconElement) {
                     iconElement.setAttribute('xlink:href', originalIcon);
                 }
             } else {
@@ -93,6 +135,11 @@ export class M_sync {
     }
 
     async syncToDidaList() {
+        if (!this.didaSyncEnabled) {
+            showMessage("滴答清单同步未启用");
+            return;
+        }
+
         try {
             // 检查日历模块是否已加载
             if (!moduleInstances['M_calendar']) {
@@ -198,9 +245,36 @@ export class M_sync {
             showMessage("同步到滴答清单成功");
 
         } catch (error) {
-            console.error("同步失败:", error);
-            showMessage(`同步失败: ${error.message}`);
+            console.error("滴答清单同步失败:", error);
+            showMessage(`滴答清单同步失败: ${error.message}`, -1, "error");
         }
+    }
+
+    // 新增：手动触发docker同步
+    async manualDockerSync() {
+        if (!this.dockerSyncEnabled) {
+            showMessage("Docker感知同步未启用");
+            return;
+        }
+        await this.handleDockerSync();
+    }
+
+    // 新增：手动触发滴答清单同步
+    async manualDidaSync() {
+        if (!this.didaSyncEnabled) {
+            showMessage("滴答清单同步未启用");
+            return;
+        }
+        await this.syncToDidaList();
+    }
+
+    // 新增：获取同步状态
+    getSyncStatus() {
+        return {
+            dockerSyncEnabled: this.dockerSyncEnabled,
+            didaSyncEnabled: this.didaSyncEnabled,
+            autoTriggerEnabled: this.settingdata["docker-sync-auto-trigger-dida"]
+        };
     }
 
     // 添加日期格式化方法
