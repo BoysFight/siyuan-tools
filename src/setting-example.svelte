@@ -745,6 +745,126 @@
                 },
             ],
         },
+        {
+        name: "滴答清单同步",
+        items: [
+            {
+                type: "checkbox",
+                title: "启用滴答清单同步",
+                description: "启用后可以将思源笔记的任务同步到滴答清单",
+                key: "cal-dida-enable",
+                value: settings["cal-dida-enable"],
+            },
+            {
+                type: "textinput",
+                title: "滴答清单用户名",
+                description: "滴答清单账号的用户名或邮箱",
+                key: "cal-dida-username",
+                value: settings["cal-dida-username"],
+            },
+            {
+                type: "textinput",
+                title: "滴答清单密码",
+                description: "滴答清单账号的密码",
+                key: "cal-dida-password",
+                value: settings["cal-dida-password"],
+            },
+            {
+                type: "textinput",
+                title: "API访问令牌",
+                description: "滴答清单的API访问令牌（可选，用于高级功能）",
+                key: "cal-dida-official-access-token",
+                value: settings["cal-dida-official-access-token"],
+            },
+            {
+                type: "select",
+                title: "同步方向",
+                description: "选择任务同步的方向",
+                key: "cal-dida-sync-direction",
+                value: settings["cal-dida-sync-direction"],
+                options: {
+                    "siyuan-to-dida": "思源 → 滴答清单",
+                    "dida-to-siyuan": "滴答清单 → 思源",
+                    "both": "双向同步"
+                },
+            },
+            {
+                type: "number",
+                title: "同步间隔（分钟）",
+                description: "自动同步的时间间隔，设置为0表示仅手动同步",
+                key: "cal-dida-sync-interval",
+                value: settings["cal-dida-sync-interval"],
+            },
+            {
+                type: "checkbox",
+                title: "启用自动同步",
+                description: "启用后会根据设置的间隔自动同步任务",
+                key: "cal-dida-auto-sync",
+                value: settings["cal-dida-auto-sync"],
+            },
+            {
+                type: "textinput",
+                title: "默认任务列表ID",
+                description: "新建任务时使用的默认列表ID（可选）",
+                key: "cal-dida-default-list-id",
+                value: settings["cal-dida-default-list-id"],
+            },
+            {
+                type: "button",
+                title: "测试连接",
+                description: "测试滴答清单连接是否正常",
+                key: "cal-dida-test",
+                value: settings["cal-dida-test"],
+                button: {
+                    label: "测试",
+                    callback: () => {
+                        try {
+                            // 这里需要调用测试连接的方法
+                            showMessage("正在测试滴答清单连接...");
+                            // moduleInstances["M_sync"].testDidaConnection();
+                        } catch (error) {
+                            showMessage(`测试连接失败: ${error.message}`);
+                        }
+                    },
+                },
+            },
+            {
+                type: "button",
+                title: "立即同步",
+                description: "立即执行一次同步操作",
+                key: "cal-dida-sync-now",
+                value: settings["cal-dida-sync-now"],
+                button: {
+                    label: "同步",
+                    callback: async () => {
+                        try {
+                            // 检查模块是否已加载
+                            if (!moduleInstances["M_sync"]) {
+                                showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
+                                return;
+                            }
+                            if (!moduleInstances["M_calendar"]) {
+                                showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
+                                return;
+                            }
+
+                            // 检查必要配置
+                            if (!settings["cal-dida-username"] || !settings["cal-dida-password"]) {
+                                showMessage("请先配置滴答清单用户名和密码", -1, "error");
+                                return;
+                            }
+
+                            showMessage("正在同步到滴答清单...");
+                            await moduleInstances["M_sync"].syncToDidaList();
+                        } catch (error) {
+                            console.error("同步失败:", error);
+                            showMessage(`同步失败: ${error.message}`, -1, "error");
+                        }
+                    },
+                },
+            },
+        ]
+    }
     ];
 
     let focusGroup = groups[0].name;

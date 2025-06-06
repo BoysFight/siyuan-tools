@@ -30,7 +30,7 @@ export const defaultSettings = {
     "cal-ics-subscribe-import": false,
     "cal-ics-subscribe-import-path": "",//暂时不处理
     "cal-ics-subscribe-import-note-id": null,
-    "cal-ics-import-mode": "single-document", 
+    "cal-ics-import-mode": "single-document",
     //// qq邮箱子模块
     "cal-qq-code": "",
     "cal-qq-email": "",
@@ -85,6 +85,18 @@ export const defaultSettings = {
     'SyncDelete': false, // 是否同步删除
     //插件通用配置
     "PluginUsageStatistics": true, // 是否开启插件使用统计
+    // 滴答清单配置
+    "cal-dida-enable": false,
+    "cal-dida-username": "", // 滴答清单用户名
+    "cal-dida-password": "", // 滴答清单密码
+    "cal-dida-use-official-api": true, // 滴答清单官方API
+    "cal-dida-official-access-token": "", // 滴答清单API令牌
+    "cal-dida-official-client-id": "", // 滴答清单API令牌
+    "cal-dida-official-client-secret": "", // 滴答清单API令牌
+    "cal-dida-sync-direction": "siyuan-to-dida", // 同步方向：siyuan-to-dida, dida-to-siyuan, both
+    "cal-dida-sync-interval": 30, // 同步间隔（分钟）
+    "cal-dida-auto-sync": false, // 是否自动同步
+    "cal-dida-default-list-id": "", // 默认任务列表ID
 };
 
 export function getSettings() {
