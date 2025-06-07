@@ -146,7 +146,21 @@ export class TickTickOfficialClient {
             throw new Error(`TickTick API request failed: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        return response.json();
+        // 检查响应内容类型和长度
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            // 如果不是 JSON 响应，返回原始文本或空对象
+            const text = await response.text();
+            return text || {};
+        }
+
+        try {
+            return await response.json();
+        } catch (error) {
+            console.error(`JSON 解析错误: ${error.message}`, error);
+            // 返回空对象而不是抛出错误，避免中断执行流程
+            return {};
+        }
     }
 
     /**
@@ -266,9 +280,30 @@ export class TickTickOfficialClient {
     }
 
     /**
-     * 获取项目数据（包含项目信息、任务列表和列信息）
+     * 获取项目中的任务详情
      */
-    async getProjectData(projectId: string): Promise<TickTickProjectData> {
+    async getProjectTaskDetail(projectId: string, taskId: string): Promise<TickTickTask> {
+        return this.request(`project/${projectId}/task/${taskId}`);
+    }
+
+    /**
+     * 获取项目数据（包含项目信息和任务列表）
+     */
+    async getProjectData(projectId: string): Promise<{
+        project: TickTickProject & {
+            closed: boolean;
+            groupId?: string;
+            viewMode: string;
+            kind: string;
+        };
+        tasks: TickTickTask[];
+        columns?: {
+            id: string;
+            projectId: string;
+            name: string;
+            sortOrder: number;
+        }[];
+    }> {
         return this.request(`project/${projectId}/data`);
     }
 }

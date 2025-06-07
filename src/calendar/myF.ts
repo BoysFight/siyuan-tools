@@ -48,7 +48,7 @@ export const statusMap = new Proxy({
 type ViewData = Promise<ViewItem[]>;
 
 // Get view IDs and names
-export async function getViewId(va_ids: string[]): ViewData {
+export async function getViewId(va_ids: string[], filterName: string = ""): ViewData {
     const viewIds_Data: ViewItem[] = [];
 
     for (const va_id of va_ids) {
@@ -58,11 +58,14 @@ export async function getViewId(va_ids: string[]): ViewData {
             const rootname = view.name ? `${view.name}-` : "";
             const rootid = view.id;
             view.views.forEach(viewItem => {
-                viewIds_Data.push({
-                    rootid: rootid,
-                    viewId: viewItem.id,
-                    name: rootname + viewItem.name
-                });
+                const fullName = rootname + viewItem.name;
+                if (filterName === "" || fullName.includes(filterName)) {
+                    viewIds_Data.push({
+                        rootid: rootid,
+                        viewId: viewItem.id,
+                        name: fullName
+                    });
+                }
             });
 
             // steveTools.outlog(viewIds_Data);

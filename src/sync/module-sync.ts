@@ -27,6 +27,7 @@ export class M_sync {
         // 分别初始化docker感知和滴答清单同步
         await this.initDockerSync();
         await this.didaSyncInstance.init(settingdata);
+        this.setupSyncListener(); // 改为调用通用监听器
 
         steveTools.outlog("同步模块初始化完成");
     }
@@ -37,63 +38,70 @@ export class M_sync {
         if (this.dockerSyncEnabled) {
             url = this.settingdata["sync-url"]; // 兼容旧配置
             token = this.settingdata["sync-token"]; // 兼容旧配置
-            this.setupDockerSyncListener();
             steveTools.outlog("Docker感知同步已启用");
         }
     }
 
-    // 修改docker感知监听器，解耦合滴答清单同步
-    private setupDockerSyncListener() {
-        if (!this.dockerSyncEnabled) return;
-
+    // 通用同步监听器 - 只负责监听同步事件，不包含具体业务逻辑
+    private setupSyncListener() {
         siyuan.ws.ws.addEventListener('message', async (e) => {
             const msg = JSON.parse(e.data);
             if (msg.cmd === "syncing") {
                 if (msg.msg && msg.msg.startsWith('上传')) {
                     console.log("同步结束");
-                    const currentHost = window.location.host;
-                    if (url.includes(currentHost)) {
-                        console.log("取消感知");
-                    } else {
-                        setTimeout(async () => {
-                            await this.handleDockerSync();
-                        }, 1000);
+
+                    // 处理 Docker 同步
+                    if (this.dockerSyncEnabled) {
+                        const currentHost = window.location.host;
+                        if (url.includes(currentHost)) {
+                            console.log("取消感知");
+                        } else {
+                            setTimeout(async () => {
+                                await this.handleDockerSync();
+                            }, 1000);
+                        }
                     }
-                }
-                // 可选：docker同步后自动触发滴答清单同步
-                if (this.settingdata["docker-sync-auto-trigger-dida"]) {
-                    await this.didaSyncInstance.syncToDidaList();
+
+                    // 处理滴答清单同步
+                    if (this.didaSyncInstance["didaSyncEnabled"] &&
+                        this.settingdata["docker-sync-auto-trigger-dida"]) {
+                        await this.didaSyncInstance.syncToDidaList();
+                    }
                 }
             }
         });
     }
 
-    // 独立的docker同步处理方法
+    // 独立的docker同步处理方法 - 添加了完善的图标恢复逻辑
     private async handleDockerSync() {
         if (!this.dockerSyncEnabled) {
             console.log("Docker感知同步未启用");
             return;
         }
 
-        try {
-            let originalIcon = "";
-            const iconElement = document.querySelector('#plugin_siyuan-steve-tools_0 svg use');
-            if (iconElement) {
-                originalIcon = iconElement.getAttribute('xlink:href');
-                iconElement.setAttribute('xlink:href', '#iconHistory');
-            }
+        let originalIcon = "";
+        const iconElement = document.querySelector('#plugin_siyuan-steve-tools_0 svg use');
 
+        // 保存原始图标
+        if (iconElement) {
+            originalIcon = iconElement.getAttribute('xlink:href');
+            iconElement.setAttribute('xlink:href', '#iconHistory');
+        }
+
+        try {
             const state = await api.URLsync(url, token);
             if (state) {
                 console.log("docker感知成功");
-                if (originalIcon && iconElement) {
-                    iconElement.setAttribute('xlink:href', originalIcon);
-                }
             } else {
                 showMessage("docker同步感知失败");
             }
         } catch (e) {
-            showMessage("docker感知同步失败: " + e, -1, "error");
+            showMessage("docker感知出现异常: " + e, -1, "error");
+        } finally {
+            // 无论成功失败都恢复图标
+            if (originalIcon && iconElement) {
+                iconElement.setAttribute('xlink:href', originalIcon);
+            }
         }
     }
 
