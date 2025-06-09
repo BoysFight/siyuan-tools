@@ -157,9 +157,9 @@ export class M_didaSync {
                     }
 
                     // 跳过已完成状态的任务，当前api不能把完成任务改为非完成，可考虑过滤
-                    // if (event?.状态?.content === "完成") {
-                    //     continue;
-                    // }
+                    if (event?.状态?.content === "完成") {
+                        continue;
+                    }
 
                     const status = event?.状态?.content === "完成" ? 2 : 0;
 
@@ -369,7 +369,7 @@ export class M_didaSync {
 
             // 统计在projectTasks中没被find过的任务
             let notFoundInSiyuanCount = 0;
-
+            let deletedTasksCount = 0;
 
             // 使用allSiyuanTaskIds而不是syncedTaskIds来检查任务是否在思源中存在
             for (const [projectId, tasks] of projectTasks) {
@@ -379,6 +379,17 @@ export class M_didaSync {
                     if (!siyuanTaskIds.has(task.id)) {
                         console.log(`滴答清单任务未在思源中找到: 标题="${task.title}", 任务ID=${task.id}`);
                         notFoundInSiyuanCount++;
+
+                        // 删除滴答清单中未在思源找到的任务
+                        try {
+                            if (this.settingdata["cal-dida-use-official-api"]) {
+                                await this.officialClient.deleteTask(projectId, task.id);
+                            console.log(`已删除滴答清单任务: 标题="${task.title}", 任务ID=${task.id}`);
+                            deletedTasksCount++;
+                            }
+                        } catch (error) {
+                            console.error(`删除任务失败: 任务ID=${task.id}, 错误:`, error);
+                        }
                     }
                 }
             }
@@ -389,6 +400,9 @@ export class M_didaSync {
             console.log(`同步到思源: ${syncToSiyuanCount}个任务`);
             console.log(`未找到匹配项: ${notFoundCount}个任务`);
             console.log(`滴答清单中未在思源找到: ${notFoundInSiyuanCount}个任务`);
+            if (deletedTasksCount > 0) {
+                console.log(`已删除滴答清单任务: ${deletedTasksCount}个任务`);
+            }
             console.log(`======================================`);
 
             // 构建动态消息，只显示count大于0的项目
@@ -398,6 +412,9 @@ export class M_didaSync {
             }
             if (syncToSiyuanCount > 0) {
                 messageParts.push(`${syncToSiyuanCount}个任务同步到思源`);
+            }
+            if (deletedTasksCount > 0) {
+                messageParts.push(`${deletedTasksCount}个任务已从滴答清单删除`);
             }
             if (notFoundCount > 0) {
                 messageParts.push(`未找到匹配项: ${notFoundCount}个`);

@@ -66,10 +66,24 @@ export interface TickTickProjectData {
 export class TickTickOfficialClient {
     private config: TickTickOfficialConfig;
     private baseUrl: string;
+    private lastRequestTime: number = 0;
+    private minRequestInterval: number = 1000; // 最小请求间隔1000ms
 
     constructor(config: TickTickOfficialConfig) {
         this.config = config;
         this.baseUrl = config.apiBaseUrl || 'https://api.dida365.com/open/v1';
+    }
+
+    private async waitForRateLimit() {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+
+        if (timeSinceLastRequest < this.minRequestInterval) {
+            const waitTime = this.minRequestInterval - timeSinceLastRequest;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+
+        this.lastRequestTime = Date.now();
     }
 
     /**
@@ -124,7 +138,9 @@ export class TickTickOfficialClient {
     /**
      * 发送API请求的通用方法
      */
-    private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
+    private async request(endpoint: string, options: RequestInit = {}, retryCount: number = 0): Promise<any> {
+        const maxRetries = 3; // 最大重试次数
+
         if (!this.config.accessToken) {
             throw new Error('Access token is required. Please authenticate first.');
         }
@@ -136,31 +152,61 @@ export class TickTickOfficialClient {
             ...options.headers
         };
 
-        const response = await fetch(url, {
-            ...options,
-            headers
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`TickTick API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-
-        // 检查响应内容类型和长度
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            // 如果不是 JSON 响应，返回原始文本或空对象
-            const text = await response.text();
-            return text || {};
-        }
+        let result: any;
 
         try {
-            return await response.json();
+            // 等待限流
+            await this.waitForRateLimit();
+            const response = await fetch(url, {
+                ...options,
+                headers
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`TickTick API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            // 检查响应内容类型和长度
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                // 如果不是 JSON 响应，返回原始文本或空对象
+                const text = await response.text();
+                result = text || {};
+            } else {
+                try {
+                    result = await response.json();
+                } catch (jsonError) {
+                    console.error(`JSON 解析错误: ${jsonError.message}`, jsonError);
+                    // 返回空对象而不是抛出错误，避免中断执行流程
+                    result = {};
+                }
+            }
+
         } catch (error) {
-            console.error(`JSON 解析错误: ${error.message}`, error);
-            // 返回空对象而不是抛出错误，避免中断执行流程
-            return {};
+            // 如果是限流错误，增加等待时间后重试
+            if (error.message.includes('exceed_query_limit') && retryCount < maxRetries) {
+                const waitTime = Math.min(this.minRequestInterval * Math.pow(2, retryCount), 30000); // 指数退避，最大30秒
+                console.log(`遇到限流，第${retryCount + 1}次重试${url}，等待${waitTime}ms后重试...`);
+
+                // 更新请求间隔
+                this.minRequestInterval = Math.min(this.minRequestInterval * 1.5, 10000);
+
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+
+                // 递归重试，增加重试计数
+                return this.request(endpoint, options, retryCount + 1);
+            }
+
+            // 如果达到最大重试次数或不是限流错误，抛出异常
+            if (retryCount >= maxRetries && error.message.includes('exceed_query_limit')) {
+                throw new Error(`API请求失败: 已达到最大重试次数(${maxRetries})，仍然遇到限流错误`);
+            }
+
+            throw error;
         }
+
+        return result;
     }
 
     /**
@@ -217,8 +263,8 @@ export class TickTickOfficialClient {
     /**
      * 删除任务
      */
-    async deleteTask(taskId: string): Promise<void> {
-        await this.request(`task/${taskId}`, {
+    async deleteTask(projectId: string, taskId: string): Promise<void> {
+        await this.request(`project/${projectId}/task/${taskId}`, {
             method: 'DELETE'
         });
     }
