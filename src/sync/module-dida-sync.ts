@@ -119,7 +119,7 @@ export class M_didaSync {
             // 收集需要同步的任务
             const tasksToSyncToSiyuan = new Map(); // Map<projectId, Map<taskId, {event, blockId, rootId, task, needFetch}>>
             // 创建一个集合，存储所有在思源中有对应记录的任务ID
-            const allSiyuanTaskIds = new Map(); // Map<projectId, Set<taskId>>
+            const allSiyuanUncompletedTaskIds = new Map(); // Map<projectId, Set<taskId>>
             const allSiyuanCompletedTaskIds = new Map(); // Map<projectId, Set<taskId>> - 存储完成任务的ID
             const completedTasksBlockInfo = new Map(); // Map<taskId, {blockId, rootId, event}> - 存储完成任务的block信息
             const projectTasks = new Map(); // 缓存项目任务数据
@@ -212,18 +212,21 @@ export class M_didaSync {
                             allSiyuanCompletedTaskIds.get(projectId).add(didaTaskId);
                             completedTasksBlockInfo.set(didaTaskId, {
                                 blockId: blockId,
-                                rootId: event?.事件?.root_id,
-                                event: event
+                                rootId: eventGroup.from.rootid,
+                                event: event,
+                                taskData: taskData,
+                                previousHash: previousHash,  // 添加previousHash
+                                currentHash: currentHash     // 添加currentHash
                             });
                         }
                         continue; // 跳过完成任务的常规同步处理
                     } else {
                         // 未完成任务的处理
-                        if (!allSiyuanTaskIds.has(projectId)) {
-                            allSiyuanTaskIds.set(projectId, new Set());
+                        if (!allSiyuanUncompletedTaskIds.has(projectId)) {
+                            allSiyuanUncompletedTaskIds.set(projectId, new Set());
                         }
                         if (didaTaskId) {
-                            allSiyuanTaskIds.get(projectId).add(didaTaskId);
+                            allSiyuanUncompletedTaskIds.get(projectId).add(didaTaskId);
                         }
                     }
 
@@ -394,50 +397,69 @@ export class M_didaSync {
             let notFoundInSiyuanCount = 0;
             let deletedTasksCount = 0;
 
-            // 使用allSiyuanTaskIds而不是syncedTaskIds来检查任务是否在思源中存在
+            // 使用allSiyuanUncompletedTaskIds而不是syncedTaskIds来检查任务是否在思源中存在
             for (const [projectId, tasks] of projectTasks) {
                 // 查找在projectTasks中但没有在思源中找到对应记录的任务
                 for (const task of tasks) {
-                    const siyuanTaskIds = allSiyuanTaskIds.get(projectId) || new Set();
+                    const siyuanUncompletedTaskIds = allSiyuanUncompletedTaskIds.get(projectId) || new Set();
                     const siyuanCompletedTaskIds = allSiyuanCompletedTaskIds.get(projectId) || new Set();
-                    
+
                     // 检查未完成任务是否有匹配项
-                    if (!siyuanTaskIds.has(task.id)) {
+                    if (siyuanUncompletedTaskIds.has(task.id) || siyuanCompletedTaskIds.has(task.id)) {
                         // 检查完成任务中是否有匹配项
                         if (siyuanCompletedTaskIds.has(task.id)) {
                             // 在完成任务中找到匹配项，更新完成的block数据
                             const completedBlockInfo = completedTasksBlockInfo.get(task.id);
                             if (completedBlockInfo) {
                                 try {
-                                    await this.updateSiyuanDatabase(completedBlockInfo.event, completedBlockInfo.blockId, completedBlockInfo.rootId, task);
-                                    
-                                    // 计算并更新哈希值
-                                    const taskHash = this.calculateTaskHash(task);
-                                    await api.setBlockAttrs(completedBlockInfo.blockId, {
-                                        "custom-event-hash": taskHash
-                                    });
-                                    
-                                    console.log(`更新完成任务: 标题="${task.title}", 任务ID=${task.id}, 区块ID=${completedBlockInfo.blockId}`);
+                                    // 直接使用存储的哈希值
+                                    const previousHash = completedBlockInfo.previousHash;
+                                    const currentEventHash = completedBlockInfo.currentHash;
+
+                                    if (previousHash === currentEventHash) {
+                                        // hash值一致，说明思源数据没有变化，用滴答清单数据更新思源数据库
+                                        await this.updateSiyuanDatabase(completedBlockInfo.event, completedBlockInfo.blockId, completedBlockInfo.rootId, task);
+
+                                        // 更新哈希值为滴答任务的hash
+                                        const taskHash = this.calculateTaskHash(task);
+                                        await api.setBlockAttrs(completedBlockInfo.blockId, {
+                                            "custom-event-hash": taskHash
+                                        });
+
+                                        console.log(`更新完成任务(滴答→思源): 标题="${task.title}", 任务ID=${task.id}, 区块ID=${completedBlockInfo.blockId}`);
+                                    } else {
+                                        // hash值不一致，说明思源数据有变化，用思源数据库内容更新滴答清单
+                                        // 更新滴答清单任务
+                                        await this.updateTaskUnified(task.id, completedBlockInfo.taskData);
+
+                                        // 更新hash值为当前计算的hash
+                                        await api.setBlockAttrs(completedBlockInfo.blockId, {
+                                            "custom-event-hash": currentEventHash
+                                        });
+
+                                        console.log(`更新完成任务(思源→滴答): 标题="${completedBlockInfo.taskData.title}", 任务ID=${task.id}, 区块ID=${completedBlockInfo.blockId}`);
+                                    }
+
                                     completedTasksUpdatedCount++;
                                 } catch (error) {
                                     console.error(`更新完成任务失败: 任务ID=${task.id}, 错误:`, error);
                                 }
                             }
-                        } else {
-                            // 既不在未完成任务中，也不在完成任务中，删除该任务
-                            console.log(`滴答清单任务未在思源中找到: 标题="${task.title}", 任务ID=${task.id}`);
-                            notFoundInSiyuanCount++;
+                        }
+                    } else {
+                        // 既不在未完成任务中，也不在完成任务中，删除该任务
+                        console.log(`滴答清单任务未在思源中找到: 标题="${task.title}", 任务ID=${task.id}`);
+                        notFoundInSiyuanCount++;
 
-                            // 删除滴答清单中未在思源找到的任务
-                            try {
-                                if (this.settingdata["cal-dida-use-official-api"]) {
-                                    await this.officialClient.deleteTask(projectId, task.id);
-                                    console.log(`已删除滴答清单任务: 标题="${task.title}", 任务ID=${task.id}`);
-                                    deletedTasksCount++;
-                                }
-                            } catch (error) {
-                                console.error(`删除任务失败: 任务ID=${task.id}, 错误:`, error);
+                        // 删除滴答清单中未在思源找到的任务
+                        try {
+                            if (this.settingdata["cal-dida-use-official-api"]) {
+                                await this.officialClient.deleteTask(projectId, task.id);
+                                console.log(`已删除滴答清单任务: 标题="${task.title}", 任务ID=${task.id}`);
+                                deletedTasksCount++;
                             }
+                        } catch (error) {
+                            console.error(`删除任务失败: 任务ID=${task.id}, 错误:`, error);
                         }
                     }
                 }
