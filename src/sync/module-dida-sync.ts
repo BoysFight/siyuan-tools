@@ -391,7 +391,26 @@ export class M_didaSync {
             console.log(`滴答清单中未在思源找到: ${notFoundInSiyuanCount}个任务`);
             console.log(`======================================`);
 
-            showMessage(`同步完成: ${syncToDidaCount}个任务同步到滴答清单, ${syncToSiyuanCount}个任务同步到思源, 未找到匹配项: ${notFoundCount}个, 滴答清单中未在思源找到: ${notFoundInSiyuanCount}个`);
+            // 构建动态消息，只显示count大于0的项目
+            const messageParts = [];
+            if (syncToDidaCount > 0) {
+                messageParts.push(`${syncToDidaCount}个任务同步到滴答清单`);
+            }
+            if (syncToSiyuanCount > 0) {
+                messageParts.push(`${syncToSiyuanCount}个任务同步到思源`);
+            }
+            if (notFoundCount > 0) {
+                messageParts.push(`未找到匹配项: ${notFoundCount}个`);
+            }
+            if (notFoundInSiyuanCount > 0) {
+                messageParts.push(`滴答清单中未在思源找到: ${notFoundInSiyuanCount}个`);
+            }
+
+            const message = messageParts.length > 0
+                ? `滴答同步完成: ${messageParts.join(', ')}`
+                : '滴答同步完成: 无变化';
+
+            showMessage(message);
 
         } catch (error) {
             console.error("滴答清单同步失败:", error);
