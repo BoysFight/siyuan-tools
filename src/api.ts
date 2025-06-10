@@ -752,6 +752,9 @@ export async function updatemainkey(params: UpdateMainKeyParams): Promise<any> {
 }
 
 
+// 添加延时控制变量
+let lastTransactionTime = 0;
+
 export async function updateAttrViewCell_pro(
     id: string,
     avID: string,
@@ -767,7 +770,7 @@ export async function updateAttrViewCell_pro(
     },
     type: 'date' | 'select' | 'relation' | 'checkbox' | 'text',
     endtime?: string
-) {
+): Promise<boolean> {
     const doOperations: IOperation[] = [];
     const newId = await generateSiyuanID() as string;
     let cellData: any;
@@ -874,7 +877,50 @@ export async function updateAttrViewCell_pro(
             .slice(0, 14)
     });
 
-    Protyle.prototype.transaction(doOperations, []);
+    // 延时控制和重试机制
+    const delay = settingdata["api-transaction-delay"] || 500;
+    const maxRetries = settingdata["api-transaction-retry-count"] || 3;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            // 确保与上次调用间隔足够
+            const now = Date.now();
+            const timeSinceLastCall = now - lastTransactionTime;
+            if (timeSinceLastCall < delay) {
+                const waitTime = delay - timeSinceLastCall;
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+            
+            // 执行事务
+            await new Promise<void>((resolve, reject) => {
+                try {
+                    Protyle.prototype.transaction(doOperations, []);
+                    lastTransactionTime = Date.now();
+                    // 由于transaction没有返回Promise，我们添加一个短暂延时来确保操作完成
+                    setTimeout(() => resolve(), 100);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+            
+            console.log(`API调用成功，尝试次数: ${attempt + 1}`);
+            return true;
+            
+        } catch (error) {
+            console.warn(`API调用失败，尝试次数: ${attempt + 1}/${maxRetries}`, error);
+            
+            if (attempt === maxRetries - 1) {
+                console.error('API调用最终失败，已达到最大重试次数', error);
+                return false;
+            }
+            
+            // 重试前等待更长时间
+            const retryDelay = delay * (attempt + 2);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+    }
+    
+    return false;
 }
 
 function transformBlockData(input: any[]): any[] {

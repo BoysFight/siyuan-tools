@@ -97,6 +97,9 @@ export const defaultSettings = {
     "cal-dida-sync-interval": 30, // 同步间隔（分钟）
     "docker-sync-auto-trigger-dida": false, // 是否自动同步
     "cal-dida-default-list-id": "", // 默认任务列表ID
+    // API调用延时控制
+    "api-transaction-delay": 500, // API调用延时（毫秒），默认500ms
+    "api-transaction-retry-count": 3, // API调用重试次数，默认3次
 };
 
 export function getSettings() {
