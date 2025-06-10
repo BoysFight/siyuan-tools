@@ -44,6 +44,7 @@ export class M_calendar {
     private updateDebounceTimer: number | null = null;
     private lastUpdateTime: number = 0;
     private readonly UPDATE_THROTTLE = 1000; // 1秒节流
+
     public av_ids: any;
     public calConfig: M_caldata;
     public alistPlugin: ics_alist;
@@ -309,39 +310,55 @@ export class M_calendar {
                         // 属性视图更新立即处理
                         this.handleUpdate(operation);
                     }
-                    else if (operation.action === "updateAttrs") {
-                        const now = Date.now();
-
+                    else if (operation.action === "update") {
                         // 检查是否是相关属性
                         const attrs = operation.data;
-                        const isRelevant = attrs && (
-                            (attrs.new && attrs.new["custom-sy-av-view"] !== undefined) ||
-                            attrs["custom-st-event"] !== undefined ||
-                            attrs["custom-dida-taskid"] !== undefined ||
-                            attrs["custom-event-hash"] !== undefined ||
-                            operation.avID // 如果有 avID 说明是属性视图相关
+                        const isRelevant = attrs && attrs.startsWith('<div data-marker') &&
+                            (attrs.includes("custom-st-event") ||
+                            attrs.includes("custom-dida-taskid") ||
+                            attrs.includes("custom-event-hash"));
+
+                        if (isRelevant) {
+                            this.handleThrottledUpdate(operation);
+                        }
+                    }
+                    else if (operation.action === "updateAttrs") {
+                        // update action 的属性在 new 字段中
+                        const newAttrs = operation.data?.new;
+                        if (!newAttrs) return;
+
+                        const isRelevant = (
+                            newAttrs["custom-sy-av-view"] !== undefined ||
+                            newAttrs["custom-st-event"] !== undefined ||
+                            newAttrs["custom-dida-taskid"] !== undefined ||
+                            newAttrs["custom-event-hash"] !== undefined
                         );
 
                         if (isRelevant) {
-                            // 节流处理
-                            if (now - this.lastUpdateTime > this.UPDATE_THROTTLE) {
-                                this.handleUpdate(operation);
-                                this.lastUpdateTime = now;
-                            } else {
-                                // 防抖处理
-                                if (this.updateDebounceTimer) {
-                                    clearTimeout(this.updateDebounceTimer);
-                                }
-                                this.updateDebounceTimer = window.setTimeout(() => {
-                                    this.handleUpdate(operation);
-                                    this.lastUpdateTime = Date.now();
-                                    this.updateDebounceTimer = null;
-                                }, 300);
-                            }
+                            this.handleThrottledUpdate(operation);
                         }
                     }
                 }
         });
+    }
+
+    // 添加节流处理方法
+    private handleThrottledUpdate(operation: any) {
+        const now = Date.now();
+        if (now - this.lastUpdateTime > this.UPDATE_THROTTLE) {
+            this.handleUpdate(operation);
+            this.lastUpdateTime = now;
+        } else {
+            // 防抖处理
+            if (this.updateDebounceTimer) {
+                clearTimeout(this.updateDebounceTimer);
+            }
+            this.updateDebounceTimer = window.setTimeout(() => {
+                this.handleUpdate(operation);
+                this.lastUpdateTime = Date.now();
+                this.updateDebounceTimer = null;
+            }, 300);
+        }
     }
 
     async handleUpdate(operation: any) {
