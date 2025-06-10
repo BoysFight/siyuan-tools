@@ -41,6 +41,9 @@ export class M_calendar {
     }
     private isUpdating: boolean = false;
     private isSettingAttrs: boolean = false;  // 添加属性声明
+    private updateDebounceTimer: number | null = null;
+    private lastUpdateTime: number = 0;
+    private readonly UPDATE_THROTTLE = 1000; // 1秒节流
     public av_ids: any;
     public calConfig: M_caldata;
     public alistPlugin: ics_alist;
@@ -298,68 +301,93 @@ export class M_calendar {
         //实现看板实时更新
         //2025-2-9更新为插件api方式监听
         this.plugin.eventBus.on("ws-main", async (e) => {
-            const msg = e.detail;
-            if (msg.cmd === "transactions") {
-                // console.log("newway", msg);
-                if (msg.data[0].doOperations[0].action === "updateAttrs" || msg.data[0].doOperations[0].action === "updateAttrViewCell") {
-                    // console.log("updateAttrs");
-                    this.avButton();
-                    // if(msg.data[0].doOperations[0].action === "updateAttrViewCell"){
-                    refreshKanban();
-                    console.log('trans')
-                    //更新背景色
-                    if (msg?.data?.[0]?.doOperations?.[0]?.avID &&
-                        msg?.data?.[0]?.doOperations?.[0]?.data?.mSelect?.[0]?.content &&
-                        msg?.data?.[0]?.doOperations?.[0]?.rowID &&
-                        msg?.data?.[0]?.doOperations?.[0]?.keyID) { // 检查 keyID 是否存在
+                const msg = e.detail;
+                if (msg.cmd === "transactions") {
+                    const operation = msg.data[0].doOperations[0];
 
-                        const operationDetails = msg.data[0].doOperations[0];
-                        const avID = operationDetails.avID;
-                        const columnKeyID = operationDetails.keyID; // 变化的列ID
-                        const blockID = operationDetails.rowID; // 行ID，即块ID
-                        const statusValue = operationDetails.data.mSelect[0].content;
+                    if (operation.action === "updateAttrViewCell") {
+                        // 属性视图更新立即处理
+                        this.handleUpdate(operation);
+                    }
+                    else if (operation.action === "updateAttrs") {
+                        const now = Date.now();
 
-                        //判断是否为事件（判断是否是日程数据库的事件）
-                        if (this.av_ids.map(item => item.id).includes(avID)) {
-                            try {
-                                // 获取属性视图的列信息
-                                const avDetails = await api.getAttributeViewKeys(blockID);
-                                // console.log("avDetails", avDetails);
-                                // 查找名为“状态”的属性列 (key) 的定义
-                                let statusKeyDefinition;
-                                // console.log("avDetails.keyValues2121", avDetails[0].keyValues);
-                                if (avDetails && avDetails[0].keyValues) {
-                                    // console.log("avDetails.keyValues", avDetails[0].keyValues);
-                                    const statusKeyValue = avDetails[0].keyValues.find(kv => kv.key && kv.key.name === "状态");
-                                    // console.log("statusKeyValue", statusKeyValue);
-                                    if (statusKeyValue) {
-                                        // console.log("statusKeyValue", statusKeyValue);
-                                        statusKeyDefinition = statusKeyValue.key;
-                                    }
+                        // 检查是否是相关属性
+                        const attrs = operation.data;
+                        const isRelevant = attrs && (
+                            (attrs.new && attrs.new["custom-sy-av-view"] !== undefined) ||
+                            attrs["custom-st-event"] !== undefined ||
+                            attrs["custom-dida-taskid"] !== undefined ||
+                            attrs["custom-event-hash"] !== undefined ||
+                            operation.avID // 如果有 avID 说明是属性视图相关
+                        );
+
+                        if (isRelevant) {
+                            // 节流处理
+                            if (now - this.lastUpdateTime > this.UPDATE_THROTTLE) {
+                                this.handleUpdate(operation);
+                                this.lastUpdateTime = now;
+                            } else {
+                                // 防抖处理
+                                if (this.updateDebounceTimer) {
+                                    clearTimeout(this.updateDebounceTimer);
                                 }
-                                // 如果找到了“状态”列，并且其ID与当前变化的列ID一致
-                                if (statusKeyDefinition && statusKeyDefinition.id === columnKeyID) {
-                                    console.log(`'状态'列 (ID: ${columnKeyID}) 发生变化: ${statusValue}, BlockID: ${blockID}`);
-                                    await api.setBlockAttrs(blockID, { "custom-st-event": myF.statusMap[statusValue] });//TODO优化，防止二次触发
-                                }
-                            } catch (error) {
-                                console.error("处理'状态'列数据变化时出错:", error);
+                                this.updateDebounceTimer = window.setTimeout(() => {
+                                    this.handleUpdate(operation);
+                                    this.lastUpdateTime = Date.now();
+                                    this.updateDebounceTimer = null;
+                                }, 300);
                             }
                         }
                     }
-                    // }
                 }
-                //【】同步更新看板 //TODO优化请求频率
-                if (msg.data[0].doOperations[0].action === "update") {
-                    const data = msg.data[0].doOperations[0].data;
-                    if (data.startsWith('<div data-marker')) {
-                        // console.log('asd', data);
-                        refreshKanban();
-                        console.log("update");
+        });
+    }
+
+    async handleUpdate(operation: any) {
+        this.avButton();
+        refreshKanban();
+        console.log('trans - optimized update');
+
+        //更新背景色
+        if (operation?.avID &&
+            operation?.data?.mSelect?.[0]?.content &&
+            operation?.rowID &&
+            operation?.keyID) { // 检查 keyID 是否存在
+
+            const avID = operation.avID;
+            const columnKeyID = operation.keyID; // 变化的列ID
+            const blockID = operation.rowID; // 行ID，即块ID
+            const statusValue = operation.data.mSelect[0].content;
+
+            //判断是否为事件（判断是否是日程数据库的事件）
+            if (this.av_ids.map(item => item.id).includes(avID)) {
+                try {
+                    // 获取属性视图的列信息
+                    const avDetails = await api.getAttributeViewKeys(blockID);
+                    // console.log("avDetails", avDetails);
+                    // 查找名为“状态”的属性列 (key) 的定义
+                    let statusKeyDefinition;
+                    // console.log("avDetails.keyValues2121", avDetails[0].keyValues);
+                    if (avDetails && avDetails[0].keyValues) {
+                        // console.log("avDetails.keyValues", avDetails[0].keyValues);
+                        const statusKeyValue = avDetails[0].keyValues.find(kv => kv.key && kv.key.name === "状态");
+                        // console.log("statusKeyValue", statusKeyValue);
+                        if (statusKeyValue) {
+                            // console.log("statusKeyValue", statusKeyValue);
+                            statusKeyDefinition = statusKeyValue.key;
+                        }
                     }
+                    // 如果找到了“状态”列，并且其ID与当前变化的列ID一致
+                    if (statusKeyDefinition && statusKeyDefinition.id === columnKeyID) {
+                        console.log(`'状态'列 (ID: ${columnKeyID}) 发生变化: ${statusValue}, BlockID: ${blockID}`);
+                        await api.setBlockAttrs(blockID, { "custom-st-event": myF.statusMap[statusValue] });//TODO优化，防止二次触发
+                    }
+                } catch (error) {
+                    console.error("处理'状态'列数据变化时出错:", error);
                 }
             }
-        });
+        }
     }
 
     async onLayoutReady() {
