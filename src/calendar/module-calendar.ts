@@ -190,7 +190,7 @@ export class M_calendar {
                 <div id="calendar-${id}" class="cal-dock-container" ></div>
                 `;
                 setTimeout(async () => {
-                    D_calendar = await run(id, 'weekkanban', '', 'title', 'today,viewFilter,prev,next', '');
+                    D_calendar = await run(id, 'weekkanban', '', 'title', 'today,prev,next', '');
                     refreshKanban();
                 }, 100);
             },
@@ -215,9 +215,9 @@ export class M_calendar {
                 <div id="calendar-${id}" class="cal-dock-container" ></div>
                 `;
                 setTimeout(async () => {
-                    let crightbar = 'today,viewFilter,prev,next';
+                    let crightbar = 'today,prev,next';
                     if (this_settingdata["lifelog-enable"]) {
-                        crightbar = 'today,lifelogToggle,viewFilter,prev,next';
+                        crightbar = 'today,lifelogToggle,prev,next';
                     }
                     D_calendar_day = await run(id, 'timeGridDay', '', 'title', crightbar, '');
                 }, 100);
