@@ -99,6 +99,18 @@ export class M_didaSync {
             ));
         }
 
+        // 检查标签变化 - 取滴答清单标签数组的第一个值更新到思源分类
+        if (updatedTask.tags?.length > 0 && event?.分类?.content !== updatedTask.tags[0]) {
+            const selectdata: ISelectOption[] = [{ content: updatedTask.tags[0] }];
+            updates.push(api.updateAttrViewCell_pro(
+                blockId,
+                rootId,
+                event.分类.keyID,
+                selectdata,
+                "select"
+            ));
+        }
+
         // 并行执行所有更新
         if (updates.length > 0) {
             await Promise.all(updates);
@@ -190,7 +202,8 @@ export class M_didaSync {
                         startDate: startDate,
                         dueDate: this.formatDateToISO(event?.开始时间?.end),
                         status: status,
-                        priority: priority
+                        priority: priority,
+                        tags: event?.分类?.content ? [event.分类.content] : [] // 添加标签
                     };
 
                     // 计算当前事件的hash值
@@ -264,7 +277,8 @@ export class M_didaSync {
                                     startDate: this.formatDateToISO(event?.开始时间?.start),
                                     dueDate: this.formatDateToISO(event?.开始时间?.end),
                                     priority: priority,
-                                    status: status
+                                    status: status,
+                                    tags: event?.分类?.content ? [event.分类.content] : [] // 添加标签字段
                                 };
 
                                 const didaData = {
@@ -273,7 +287,8 @@ export class M_didaSync {
                                     startDate: didaTask.startDate || null,
                                     dueDate: didaTask.dueDate || null,
                                     priority: didaTask.priority || 0,
-                                    status: didaTask.status || 0
+                                    status: didaTask.status || 0,
+                                    tags: didaTask.tags || [] // 添加标签字段
                                 };
 
                                 // 比较各个字段并打印差异
@@ -561,7 +576,8 @@ export class M_didaSync {
         startDate: string | null,
         dueDate: string | null,
         priority: number,
-        status: number
+        status: number,
+        tags?: string[] // 添加标签字段
     }): string {
         // 标准化数据，确保空值处理一致
         const hashData = {
@@ -570,7 +586,8 @@ export class M_didaSync {
             startDate: data.startDate || null,
             dueDate: data.dueDate || null,
             priority: typeof data.priority === 'number' ? data.priority : 0,
-            status: data.status || 0
+            status: data.status || 0,
+            tags: data.tags || [] // 添加标签处理
         };
 
         const str = JSON.stringify(hashData);
@@ -590,7 +607,8 @@ export class M_didaSync {
         startDate: string | null,
         dueDate: string | null,
         priority: number,
-        status: number
+        status: number,
+        tags?: string[] // 添加标签字段
     }): string {
         return this.calculateHash({
             title: task.title || "",
@@ -598,7 +616,8 @@ export class M_didaSync {
             startDate: task.startDate || null,
             dueDate: task.dueDate || null,
             priority: task.priority || 0,
-            status: task.status || 0
+            status: task.status || 0,
+            tags: task.tags || [] // 添加标签
         });
     }
 
@@ -610,7 +629,8 @@ export class M_didaSync {
             startDate: task.startDate || null,
             dueDate: task.dueDate || null,
             priority: task.priority || 0,
-            status: task.status || 0
+            status: task.status || 0,
+            tags: task.tags || [] // 添加标签
         });
     }
 
@@ -637,7 +657,8 @@ export class M_didaSync {
                 startDate: taskData.startDate,
                 dueDate: taskData.dueDate,
                 priority: taskData.priority,
-                status: taskData.status
+                status: taskData.status,
+                tags: taskData.tags // 添加标签字段
             };
             return await this.officialClient.createTask(officialTask);
         } else {
@@ -675,7 +696,8 @@ export class M_didaSync {
                 startDate: taskData.startDate,
                 dueDate: taskData.dueDate,
                 priority: taskData.priority,
-                status: taskData.status
+                status: taskData.status,
+                tags: taskData.tags // 添加标签字段
             };
             return await this.officialClient.updateTask(taskId, officialTask);
         } else {
