@@ -178,6 +178,16 @@ function extractDataFromTable(data: any, isZQ = false) {
                     };
                 }
 
+                // 提取项目
+                if (columnMap.has('项目') && row.cells) {
+                    const subCell = row.cells[columnMap.get('项目').index];
+                    rowData['项目'] = {
+                        contents: subCell?.value?.relation?.contents || '',
+                        ids: subCell?.value?.relation?.blockIDs || '',
+                        keyID: subCell?.value?.keyID || '',
+                    };
+                }
+
                 //提取是否主事件
                 if (columnMap.has('主事件') && row.cells) {
                     const mainCell = row.cells[columnMap.get('主事件').index];
@@ -618,6 +628,46 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
                 }
             }
         }
+
+        // 获取当前文档所在的项目数据库中的项目ID
+        if (direct.directid) {
+            try {
+                // 获取当前文档的根文档ID
+                const block = await api.getBlockByID(direct.directid);
+                if (block && block.root_id) {
+                    try {
+                        const docBlock = await api.getBlockByID(block.root_id);
+                        const relationKeyID = await getKeyIDfromViewValue(viewValue, "项目", to_db_id);
+                        if (relationKeyID && docBlock.content &&
+                            (docBlock.content.startsWith('Epic') ||
+                             docBlock.content.startsWith('Feature') ||
+                             docBlock.content.startsWith('Story')) &&
+                            docBlock.ial.includes('custom-avs=')) {
+                            // 更新父事件的关联字段，保留原有关联
+                            await api.updateAttrViewCell_pro(
+                                direct.directid,
+                                to_db_id,
+                                relationKeyID,
+                                {
+                                    blockID: block.root_id,
+                                    content: docBlock.content,
+                                    action: "add",
+                                    oldrelation: {
+                                        ids: [],
+                                        contents: []
+                                    }
+                                },
+                                "relation",
+                            )
+                        }
+                    } catch (docError) {
+                        console.warn(`获取文档 ${block.root_id} 信息失败:`, docError);
+                    }
+                }
+            } catch (blockError) {
+                console.warn(`获取块 ${direct.directid} 信息失败:`, blockError);
+            }
+    }
         sy.showMessage('已添加事件', 2000, "info", "1");
         return true;
     }
