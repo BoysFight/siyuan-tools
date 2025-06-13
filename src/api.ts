@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2023 frostime. All rights reserved.
  * https://github.com/frostime/sy-plugin-template-vite
- * 
+ *
  * See API Document in [API.md](https://github.com/siyuan-note/siyuan/blob/master/API.md)
  * API 文档见 [API_zh_CN.md](https://github.com/siyuan-note/siyuan/blob/master/API_zh_CN.md)
  */
@@ -384,8 +384,8 @@ export async function getFile(path: string): Promise<any> {
 
 /**
  * fetchPost will secretly convert data into json, this func merely return Blob
- * @param endpoint 
- * @returns 
+ * @param endpoint
+ * @returns
  */
 export const getFileBlob = async (path: string): Promise<Blob | null> => {
     const endpoint = '/api/file/getFile'
@@ -868,19 +868,11 @@ export async function updateAttrViewCell_pro(
         data: cellData
     });
 
-    doOperations.push({
-        action: "doUpdateUpdated",
-        id: newId,
-        data: new Date(Date.now() + 8 * 60 * 60 * 1000)
-            .toISOString()
-            .replace(/[:\-]|(\.\d{3})|T/g, "")
-            .slice(0, 14)
-    });
 
     // 延时控制和重试机制
     const delay = settingdata["api-transaction-delay"] || 500;
     const maxRetries = settingdata["api-transaction-retry-count"] || 3;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             // 确保与上次调用间隔足够
@@ -890,7 +882,15 @@ export async function updateAttrViewCell_pro(
                 const waitTime = delay - timeSinceLastCall;
                 await new Promise(resolve => setTimeout(resolve, waitTime));
             }
-            
+
+            doOperations.push({
+                action: "doUpdateUpdated",
+                id: newId,
+                data: new Date(Date.now() + 8 * 60 * 60 * 1000)
+                    .toISOString()
+                    .replace(/[:\-]|(\.\d{3})|T/g, "")
+                    .slice(0, 14)
+            });
             // 执行事务
             await new Promise<void>((resolve, reject) => {
                 try {
@@ -902,24 +902,24 @@ export async function updateAttrViewCell_pro(
                     reject(error);
                 }
             });
-            
+
             console.log(`API调用成功，尝试次数: ${attempt + 1}`);
             return true;
-            
+
         } catch (error) {
             console.warn(`API调用失败，尝试次数: ${attempt + 1}/${maxRetries}`, error);
-            
+
             if (attempt === maxRetries - 1) {
                 console.error('API调用最终失败，已达到最大重试次数', error);
                 return false;
             }
-            
+
             // 重试前等待更长时间
             const retryDelay = delay * (attempt + 2);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
     }
-    
+
     return false;
 }
 
@@ -997,12 +997,12 @@ async function getDateTimestamps(dateStr: string): Promise<{ start: number, end:
 
 export async function getFromApi2(path: string, params: Record<string, string> = {}, headers: Record<string, string> = {}): Promise<any> {
     const baseUrl = 'http://api2.232397.xyz';//统计api
-    
+
     // 构建查询字符串
-    const queryString = Object.keys(params).length > 0 
-        ? '?' + new URLSearchParams(params).toString() 
+    const queryString = Object.keys(params).length > 0
+        ? '?' + new URLSearchParams(params).toString()
         : '';
-    
+
     const url = `${baseUrl}${path}${queryString}`;
     // console.log('请求的URL:', url);
     try {
@@ -1013,11 +1013,11 @@ export async function getFromApi2(path: string, params: Record<string, string> =
                 ...headers
             }
         });
-        
+
         if (!response.ok) {
             console.warn(`api`);
         }
-        
+
         const data =await response.text();
         // console.log('ok');
         return {

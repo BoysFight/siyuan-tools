@@ -502,6 +502,13 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
     direct = { isdirect: false, directid: "" },
     isrefresh = true
 ) {
+    // 如果当前不是主窗口（6806端口），跳过同步
+    if (window.location.port !== '16806' && window.location.port !== '6806') {
+        const currentPort = window.location.port;
+        const reason = `当前端口 ${currentPort} 不是主窗口(6806Or16806)`;
+        console.log(`[跳过创建任务] ${reason}`);
+        return;
+    }
     let isok = false;
     status = status || "未完成";
     let to_db_id = db_id || settingdata["cal-db-id"];
