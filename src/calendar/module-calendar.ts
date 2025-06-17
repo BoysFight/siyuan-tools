@@ -412,7 +412,7 @@ export class M_calendar {
             // console.log("切换思源块:", e);
             // this.currentid = e.detail.protyle.block.rootID;
             // console.log(this.currentid);
-            // addquikaddButton(e);
+            addquikaddButton(e);
         });
 
         //悬浮显示
