@@ -407,12 +407,48 @@ export class M_calendar {
         }
     }
 
+
+    private async addCalendarButton(e) {
+        const breadcrumb = e.detail.protyle.element.querySelector('.protyle-breadcrumb');
+        if (breadcrumb) {
+            // 检查按钮是否已存在
+            const existingButton = breadcrumb.querySelector('.calendar-view-button');
+            if (!existingButton) {
+                // 找到 more 按钮作为插入参考点
+                const moreButton = breadcrumb.querySelector('button[data-type="more"]');
+
+                // 创建按钮元素
+                const button = document.createElement('button');
+                button.className = 'block__icon fn__flex-center ariaLabel calendar-view-button';
+                button.setAttribute('aria-label', '打开日程视图');
+                button.innerHTML = '<svg class="item__graphic"><use xlink:href="#iconCalendar"></use></svg>';
+
+                // 添加点击事件监听器
+                button.addEventListener('click', async () => {
+                    if (front == "browser-mobile" || front == "mobile") {
+                        await this.openRiChengViewDialog(true);
+                    } else {
+                        await this.openRiChengViewDialog(false);
+                    }
+                });
+
+                // 将按钮插入到 more 按钮之前
+                if (moreButton) {
+                    breadcrumb.insertBefore(button, moreButton);
+                } else {
+                    breadcrumb.appendChild(button);
+                }
+            }
+        }
+    }
+
     async onLayoutReady() {
         this.plugin.eventBus.on('switch-protyle', (e) => {
             // console.log("切换思源块:", e);
             // this.currentid = e.detail.protyle.block.rootID;
             // console.log(this.currentid);
-            addquikaddButton(e);
+            // addquikaddButton(e);
+            this.addCalendarButton(e);
         });
 
         //悬浮显示
