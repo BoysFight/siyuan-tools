@@ -65,7 +65,7 @@
                 },
                 {
                     colName: '项目',
-                    getColValue: async (keyID, rowID, cellID, avID) => {
+                    getColValue: async (keyID, rowID, cellID, avID, existingValues) => {
                         try {
                             console.info(`开始处理项目关联 - rowID: ${rowID}, avID: ${avID}`);
 
@@ -115,9 +115,44 @@
                                 console.warn(`文档缺少必要属性 custom-avs - rootID: ${docId}`);
                                 return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
                             }
+                        // Use existingValues if provided, otherwise get current values
+                        const currentValues = existingValues;
 
-                            console.info(`成功设置项目关联 - rootID: ${docId}`);
-                            return {"type": "relation", "relation": {"blockIDs": [docId], "contents": [{"type": "block", "block": {"id": docId, "content": docTitle}, "isDetached": false}]}, "id": cellID};
+                        // Check if relation already exists
+                        const relationExists = currentValues.some(
+                            value => value.block?.id === docId || value.relation?.blockIDs?.includes(docId)
+                        );
+
+                        if (!relationExists) {
+                            const newBlockIDs = [...(currentValues[0]?.relation?.blockIDs || []), docId];
+                            const newContents = [];
+                            // const newRelation = {
+                            //     type: "block",
+                            //     blockID: docId,
+                            //     block: {
+                            //         id: docId,
+                            //         content: docTitle
+                            //     },
+                            //     isDetached: false
+                            // };
+                            // const newContents = [...(currentValues[0]?.relation?.contents || []), newRelation];
+
+                            return {
+                                type: "relation",
+                                relation: {
+                                    blockIDs: newBlockIDs,
+                                    contents: newContents
+                                },
+                                id: cellID
+                            };
+                        }
+
+                        // Return existing relations if no update needed
+                        return {
+                            type: "relation",
+                            "relation": currentValues[0]?.relation || { blockIDs: [], contents: [] },
+                            id: cellID
+                        };
 
                         } catch (error) {
                             console.error('获取项目信息失败:', error);
@@ -281,11 +316,11 @@
         for(const blockId of blockIds) {
             for(const col of cols) {
                 if(!col.keyID) continue;
-                const cellID = await getCellIdByRowIdAndKeyId(blockId, col.keyID, avID);
+                const { cellID, values } = await getCellIdByRowIdAndKeyId(blockId, col.keyID, avID);
                 if(!cellID) continue;
                 let colData = {avID: avID, keyID: col.keyID, rowID: blockId, cellID};
                 if(typeof col.getColValue !== 'function') continue;
-                const colValue = await col.getColValue(col.keyID, blockId, cellID, avID);
+                const colValue = await col.getColValue(col.keyID, blockId, cellID, avID, values);;
                 if(typeof colValue !== 'object') continue;
                 colData.value = colValue;
                 const result = await requestApi("/api/av/setAttributeViewBlockAttr", colData);
@@ -295,18 +330,48 @@
     }
     // 获取cellID
     // 对于绑定块，块/文档id === rowID
+    // Cache for attribute view keys to avoid repeated API calls
+    const avKeysCache = new Map();
+    const CACHE_TIMEOUT = 5000; // 缓存有效期5秒
+
     async function getCellIdByRowIdAndKeyId(rowID, keyID, avID) {
-        let res = await requestApi("/api/av/getAttributeViewKeys", {id: rowID });
-        const foundItem = res.data.find(item => item.avID === avID); //avid
-        if (foundItem && foundItem.keyValues) {
-            // 步骤2：在 keyValues 中查找特定 key.id 的项
-            const specificKey = foundItem.keyValues.find(kv => kv.key.id === keyID); // keyid
-            // 步骤3：获取 values 数组的第一个元素的 id
-            if (specificKey && specificKey.values && specificKey.values.length > 0) {
-                //console.log(specificKey.values[0].id)
-                return specificKey.values[0].id;
+        try {
+            const cacheKey = `${rowID}-${avID}`;
+            const now = Date.now();
+
+            // 检查缓存是否存在且未过期
+            const cached = avKeysCache.get(cacheKey);
+            if (!cached || now - cached.timestamp > CACHE_TIMEOUT) {
+                const res = await requestApi("/api/av/getAttributeViewKeys", { id: rowID });
+                avKeysCache.set(cacheKey, {
+                    data: res.data,
+                    timestamp: now
+                });
             }
+
+            const cachedData = avKeysCache.get(cacheKey).data;
+            const foundItem = cachedData.find(item => item.avID === avID);
+
+            if (foundItem && foundItem.keyValues) {
+                const specificKey = foundItem.keyValues.find(kv => kv.key.id === keyID);
+                if (specificKey && specificKey.values && specificKey.values.length > 0) {
+                    return {
+                        cellID: specificKey.values[0].id,
+                        values: specificKey.values
+                    };
+                }
+            }
+            return { cellID: null, values: [] };
+        } catch (error) {
+            console.error('Error in getCellIdByRowIdAndKeyId:', error);
+            return { cellID: null, values: [] };
         }
+    }
+
+    // 在数据更新后清除相关缓存
+    function clearCache(rowID, avID) {
+        const cacheKey = `${rowID}-${avID}`;
+        avKeysCache.delete(cacheKey);
     }
 
     // 插入块到数据库(非绑定)
