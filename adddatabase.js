@@ -70,7 +70,7 @@
                             console.info(`开始处理项目关联 - rowID: ${rowID}, avID: ${avID}`);
 
                             // 获取当前块的根文档
-                            const blockInfo = await requestApi('/api/block/getBlockInfo', {id: rowID});
+                            const blockInfo = await getBlockByID(rowID);
                             if (blockInfo?.code !== 0) {
                                 console.error(`获取块信息失败 - rowID: ${rowID}, 错误信息: ${blockInfo?.msg}`);
                                 return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
@@ -164,6 +164,67 @@
                                 keyID,
                                 cellID
                             });
+                            return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
+                        }
+                    },
+                },
+                {
+                    colName: '父任务',
+                    getColValue: async (keyID, rowID, cellID, avID, existingValues) => {
+                        try {
+                            console.info(`开始处理父任务关联 - rowID: ${rowID}, avID: ${avID}`);
+
+                            // 添加获取最近上级列表项块的辅助函数
+                            async function findNearestParentListItemBlock(blockId) {
+                                let currentBlock = await getBlockByID(blockId);
+
+                                while (currentBlock && currentBlock.parent_id) {
+                                    const parentBlock = await getBlockByID(currentBlock.parent_id);
+                                    if (parentBlock && parentBlock.type === 'i') {  // 'i' 表示列表项块
+                                        return parentBlock.id;
+                                    }
+                                    currentBlock = parentBlock;
+                                }
+                                return null;
+                            }
+
+                            // 获取父任务ID
+                            const parentTaskId = await findNearestParentListItemBlock(rowID);
+                            if (!parentTaskId) {
+                                console.info(`未找到父任务 - rowID: ${rowID}`);
+                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
+                            }
+
+                            // 检查父节点是否在数据库中（通过检查属性）
+                            const parentAttrs = await requestApi('/api/attr/getBlockAttrs', {id: parentTaskId});
+                            if (!parentAttrs?.data?.['custom-st-event']) {
+                                console.info(`父节点不在数据库中 - parentID: ${parentTaskId}`);
+                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
+                            }
+
+                            // 使用现有值或初始化新的关系数据
+                            const currentValues = existingValues || [];
+
+                            // 检查关系是否已存在
+                            const relationExists = currentValues.some(
+                                value => value.block?.id === parentTaskId || value.relation?.blockIDs?.includes(parentTaskId)
+                            );
+
+                            if (!relationExists) {
+                                const newBlockIDs = [...(currentValues[0]?.relation?.blockIDs || []), parentTaskId];
+                                return {
+                                    "type": "relation",
+                                    "relation": {
+                                        "blockIDs": newBlockIDs,
+                                        "contents": []
+                                    },
+                                    "id": cellID
+                                };
+                            }
+
+                            return currentValues[0] || {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
+                        } catch (error) {
+                            console.error(`处理父任务关联时发生错误: ${error.message}`);
                             return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
                         }
                     },
@@ -293,6 +354,12 @@
             return [];
         }
         return result.data;
+    }
+    // 根据块 ID 获取块信息
+    async function getBlockByID(blockId) {
+        const sqlScript = `select * from blocks where id ='${blockId}'`;
+        const data = await getAvBySql(sqlScript);
+        return data[0];
     }
     // 插入块到数据库
     async function addBlocksToAv(blockIds, avId, avBlockID) {
