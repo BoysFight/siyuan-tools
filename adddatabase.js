@@ -22,7 +22,7 @@
     const menus = [
         {
             // 菜单名，显示在块或文档右键菜单上
-            name: "添加到日程数据库",
+            name: "更新日程数据库",
             // 添加到的数据库块id列表（必填），注意是数据库所在块id，如果移动了数据库位置需要更改
             toAvBlockId: "20250113200532-y2n64lu",
             // 指定数据库的列名，不填默认是添加到主键列，该参数仅对不绑定块菜单有效，如果多个列名一样的则取第一个
@@ -231,6 +231,106 @@
                 }
             ],
         },
+        {
+            name: "更新项目数据库",
+            toAvBlockId: "20240918154915-8ktx2i4", // 请替换为你的项目数据库块ID
+            isBindBlock: true,
+            customAttrs: {},
+            otherCols: [
+                {
+                    colName: '父项目',
+                    getColValue: async (keyID, rowID, cellID, avID, existingValues) => {
+                        try {
+                            // 获取当前块的根文档
+                            const blockInfo = await getBlockByID(rowID);
+                            const docId = blockInfo.root_id;
+                            const docInfo = await getBlockByID(docId);
+                            const hpath = docInfo?.['hpath'];
+                            const path = docInfo?.['path'];
+
+                            if (!hpath && !path) {
+                                console.warn('文档缺少 hpath 和 path 属性');
+                                return {type: "relation", relation: {blockIDs: [], contents: []}, id: cellID};
+                            }
+
+                            // 使用 hpath 获取父文档路径，过滤掉空字符串
+                            const parentPaths = hpath.split('/').filter(p => p);
+                            // 使用 path 获取父文档ID，过滤掉空字符串
+                            const parentIds = path.split('/').filter(id => id);
+
+                            // 从近到远遍历父文档
+                            for (let i = parentPaths.length - 2; i >= 0; i--) {
+                                const parentPath = parentPaths[i];
+                                const parentId = parentIds[i];
+
+                                // 检查是否以 Epic、Feature 或 Story 开头
+                                if (parentPath.startsWith('Epic') || parentPath.startsWith('Feature') || parentPath.startsWith('Story')) {
+                                    return {
+                                        type: "relation",
+                                        relation: {
+                                            blockIDs: [parentId],
+                                            contents: []
+                                        },
+                                        id: cellID
+                                    };
+                                }
+                            }
+
+                            return {type: "relation", relation: {blockIDs: [], contents: []}, id: cellID};
+                        } catch (error) {
+                            console.error('获取父项目失败:', error);
+                            return {type: "relation", relation: {blockIDs: [], contents: []}, id: cellID};
+                        }
+                    }
+                },
+                {
+                    colName: '文章库',
+                    getColValue: async (keyID, rowID, cellID, avID, existingValues) => {
+                        try {
+                            // 获取当前块的根文档
+                            const blockInfo = await getBlockByID(rowID);
+                            const docId = blockInfo.root_id;
+
+                            // 修改 SQL 查询以获取文档中的所有引用的根文档
+                            //custom-avs是对应数据库在av目录先的json文件的名字，不是复制数据库id的结果
+                            //20240915110837-kkim7yn 是文章库的数据库id
+                            const sql = `
+                            SELECT DISTINCT r.def_block_root_id
+                            FROM refs r
+                            INNER JOIN blocks b ON r.def_block_root_id = b.id
+                            WHERE r.root_id = '${docId}'
+                            AND b.ial LIKE '%custom-avs="20240915110837-kkim7yn"%'
+                            `;
+                            const refs = await requestApi('/api/query/sql', {stmt: sql});
+
+                            if (refs.code !== 0 || !refs.data || !refs.data.length) {
+                                console.info('未找到引用关系');
+                                return {type: "relation", relation: {blockIDs: [], contents: []}, id: cellID};
+                            }
+
+                            // 检查每个引用文档是否在文章库中
+                            const articleBlockIds = [];
+                            for (const ref of refs.data) {
+                                const refBlock = await getBlockByID(ref.def_block_root_id);
+                                articleBlockIds.push(ref.def_block_root_id);
+                            }
+
+                            return {
+                                type: "relation",
+                                relation: {
+                                    blockIDs: articleBlockIds,
+                                    contents: []
+                                },
+                                id: cellID
+                            };
+                        } catch (error) {
+                            console.error('获取文章库引用失败:', error);
+                            return {type: "relation", relation: {blockIDs: [], contents: []}, id: cellID};
+                        }
+                    }
+                }
+            ]
+        }
     ];
 
     // 添加快捷键处理函数
@@ -253,7 +353,7 @@
         }
 
         // 使用第一个菜单配置
-        const menu = menus[0];
+        const menu = menus[1];
         // 创建一个包含当前块的数组
         const blocks = [{ dataset: { nodeId: cursorElementId } }];
         await menuItemClick(menu.toAvBlockId, menu.toAvColName, menu.isBindBlock, menu.otherCols, menu.customAttrs, false, blocks);
@@ -613,3 +713,6 @@
         });
     }
 })();
+const menus = [
+
+];
