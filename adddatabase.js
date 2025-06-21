@@ -248,7 +248,7 @@
         }
 
         if (!cursorElementId) {
-            showMessage('请先将光标定位到一个块', 3000, 'error');
+            showMessage('请先将光标定位到一个块', true, 3000);
             return;
         }
 
@@ -375,6 +375,7 @@
             const blockIds = [...blocks].map(block => block.dataset.nodeId);
             if(isEnableCustomAttrsInSelectedBlock) await setBlocksAttrs(blockIds, customAttrs);
         }
+        showMessage('数据添加成功', false, 3000);
     }
     // 通过块id获取数据库id
     async function getAvIdByAvBlockId(blockId) {
