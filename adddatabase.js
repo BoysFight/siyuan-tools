@@ -70,7 +70,7 @@
                             console.info(`开始处理项目关联 - rowID: ${rowID}, avID: ${avID}`);
 
                             // 获取当前块的根文档
-                            const blockInfo = await getBlockByID(rowID);
+                            const blockInfo = await requestApi('/api/block/getBlockInfo', {id: rowID});
                             if (blockInfo?.code !== 0) {
                                 console.error(`获取块信息失败 - rowID: ${rowID}, 错误信息: ${blockInfo?.msg}`);
                                 return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
@@ -233,6 +233,49 @@
         },
     ];
 
+    // 添加快捷键处理函数
+    async function handleHotkey() {
+        const protyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)')||document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
+        if (!protyle) return;
+
+        // 获取光标所在块的 ID
+        let cursorElement = getCursorElement();
+        let cursorElementId = cursorElement?.closest('[data-type]')?.getAttribute('data-node-id');
+
+        // 如果光标在列表项中，获取列表项的 ID
+        if (cursorElement?.closest('.li')) {
+            cursorElementId = cursorElement.closest('.li').getAttribute('data-node-id');
+        }
+
+        if (!cursorElementId) {
+            showMessage('请先将光标定位到一个块', 3000, 'error');
+            return;
+        }
+
+        // 使用第一个菜单配置
+        const menu = menus[0];
+        // 创建一个包含当前块的数组
+        const blocks = [{ dataset: { nodeId: cursorElementId } }];
+        await menuItemClick(menu.toAvBlockId, menu.toAvColName, menu.isBindBlock, menu.otherCols, menu.customAttrs, false, blocks);
+    }
+
+    // 获取光标所在元素
+    function getCursorElement() {
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return null;
+        const range = selection.getRangeAt(0);
+        return range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer;
+    }
+
+    // 注册快捷键
+    window.addEventListener('keydown', (event) => {
+        // Alt + X
+        if (event.altKey && event.key.toLowerCase() === 'x') {
+            event.preventDefault();
+            handleHotkey();
+        }
+    });
+
     // 监听块右键菜单
     whenElementExist('#commonMenu .b3-menu__items').then((menuItems) => {
         const menusReverse = menus.reverse();
@@ -257,27 +300,30 @@
             });
         });
     });
-    // 菜单点击事件
-    async function menuItemClick(toAvBlockId, toAvColName, isBindBlock, otherCols, customAttrs, isTitleMenu) {
+
+    // 修改 menuItemClick 函数，使用传入的 customBlocks
+    async function menuItemClick(toAvBlockId, toAvColName, isBindBlock, otherCols, customAttrs, isTitleMenu, customBlocks) {
         const avId = await getAvIdByAvBlockId(toAvBlockId);
         if(!avId) {
             showMessage('未找到块ID'+toAvBlockId+'所在的数据库，请检查数据库块ID配置是否正确', true);
             return;
         }
-        let blocks = [];
-        const protyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)')||document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
-        if(isTitleMenu) {
-            // 添加文档块到数据库
-            const docTitleEl = (protyle||document)?.querySelector('.protyle-title');
-            const docId = docTitleEl?.dataset?.nodeId;
-            const docTitle = docTitleEl?.querySelector('.protyle-title__input')?.textContent;
-            blocks = [{
-                dataset: {nodeId: docId},
-                textContent: docTitle,
-            }];
-        } else {
-            // 添加普通块到数据库
-            blocks = (protyle||document)?.querySelectorAll('.protyle-wysiwyg--select');
+        let blocks = customBlocks;
+        if (!blocks) {
+            const protyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)')||document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
+            if(isTitleMenu) {
+                // 添加文档块到数据库
+                const docTitleEl = (protyle||document)?.querySelector('.protyle-title');
+                const docId = docTitleEl?.dataset?.nodeId;
+                const docTitle = docTitleEl?.querySelector('.protyle-title__input')?.textContent;
+                blocks = [{
+                    dataset: {nodeId: docId},
+                    textContent: docTitle,
+                }];
+            } else {
+                // 添加普通块到数据库
+                blocks = (protyle||document)?.querySelectorAll('.protyle-wysiwyg--select');
+            }
         }
         // 绑定块
         if(isBindBlock){
