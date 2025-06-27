@@ -80,6 +80,29 @@ function showMessage(message, isError = false, delay = 7000) {
     };
 
     const API_HANDLERS = {
+        '/api/filetree/createDailyNote': {
+            method: 'POST',
+            validateParams: (body) => {
+                try {
+                    // 检查笔记本是否匹配
+                    const notebookID = '20220429170842-o80xrr2';
+                    const boxid = window.siyuan.storage["local-dailynoteid"];
+                    if (boxid !== notebookID) {
+                        console.log('非目标笔记本，跳过');
+                        return null;
+                    }
+                    return { dbBlockId: '20231009174308-8c1fkzi', isMultiDoc: false };
+                } catch (err) {
+                    console.error('处理请求参数失败:', err);
+                    return null;
+                }
+            },
+            processResult: (result, docInfo) => {
+                if (!result?.data?.id) return;
+                console.log(`开始处理日记 ${result.data.id}...`);
+                scheduleDocProcess(result.data.id, docInfo.dbBlockId, 0);
+            }
+        },
         '/api/filetree/renameDoc': {
             method: 'POST',
             validateParams: (body) => {
@@ -158,7 +181,9 @@ function showMessage(message, isError = false, delay = 7000) {
         const [url, options] = args;
 
         // 快速路径：只检查特定的 API
-        if (!url.startsWith('/api/storage/setLocalStorageVal') && !url.startsWith('/api/filetree/renameDoc')) {
+        if (!url.startsWith('/api/storage/setLocalStorageVal') &&
+            !url.startsWith('/api/filetree/renameDoc') &&
+            !url.startsWith('/api/filetree/createDailyNote')) {
             return originalFetch.apply(this, args);
         }
 
