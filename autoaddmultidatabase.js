@@ -121,7 +121,7 @@ function showMessage(message, isError = false, delay = 7000) {
                           params.key === 'local-filespaths' &&
                           Array.isArray(params.val) &&
                           params.val.length === 1)) {
-                            console.log(`跳过处理：val 数组长度为 ${params.val.length}，期望长度为 1`);
+                            // console.log(`跳过处理：val 数组长度为 ${params.val.length}，期望长度为 1`);
                             return null;
                     }
                     // 遍历所有笔记本路径
@@ -129,7 +129,7 @@ function showMessage(message, isError = false, delay = 7000) {
                         if (item.notebookId && Array.isArray(item.openPaths)) {
                             // 检查 openPaths 数组长度
                             if (item.openPaths.length !== 1) {
-                                console.log(`跳过处理：openPaths 数组长度为 ${item.openPaths.length}，期望长度为 1`);
+                                // console.log(`跳过处理：openPaths 数组长度为 ${item.openPaths.length}，期望长度为 1`);
                                 continue;
                             }
                             const path = item.openPaths[0];
@@ -157,8 +157,11 @@ function showMessage(message, isError = false, delay = 7000) {
     window.fetch = async function(...args) {
         const [url, options] = args;
 
-        // console.log(`window.fetch ${url}...`);
-        // 检查是否为支持的API
+        // 快速路径：只检查特定的 API
+        if (!url.startsWith('/api/storage/setLocalStorageVal') && !url.startsWith('/api/filetree/renameDoc')) {
+            return originalFetch.apply(this, args);
+        }
+
         const handler = API_HANDLERS[url];
         if (handler && options?.method === handler.method) {
             // 验证参数并获取文档信息
