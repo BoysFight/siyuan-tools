@@ -1,10 +1,20 @@
 // 功能：自动添加文档到多个数据库
 // version 0.0.1
 
+// 显示通知
+function showMessage(message, isError = false, delay = 7000) {
+    return fetch('/api/notification/' + (isError ? 'pushErrMsg' : 'pushMsg'), {
+        method: 'POST',
+        body: JSON.stringify({
+            msg: message,
+            timeout: delay
+        })
+    });
+}
+
 (async () => {
     let isProcessing = false; // 全局处理锁
     const processedNotes = new Set(); // 记录已处理的文档ID
-    let addedCount = {}; // 记录每个数据库添加的文档数量
 
     // 配置多个数据库的规则
     const databaseRules = [
@@ -19,7 +29,7 @@
             name: '文章数据库',
             dbBlockId: '20240915110837-quim9ts',
             notebookID: '20230322123651-tsuyuox',
-            pathPattern: /^/i,
+            pathPattern: /^\/\d{14}-[a-z0-9]{7}\.sy$/, // 匹配根目录下的文档，如 /20250627214031-zmsdgbq.sy
             titlePattern: null // 不需要标题匹配
         }
         // 可以添加更多数据库规则
@@ -50,7 +60,7 @@
     const lastProcessTimes = new Map();
     const DEBOUNCE_DELAY = 1000; // 防抖延迟时间（毫秒）
 
-    const scheduleDocProcess = (docId, delay = DEBOUNCE_DELAY) => {
+    const scheduleDocProcess = (docId, dbBlockId = null, delay = DEBOUNCE_DELAY) => {
         const now = Date.now();
         const lastTime = lastProcessTimes.get(docId);
 
@@ -61,7 +71,7 @@
 
         // 设置新的定时器
         const timerId = setTimeout(() => {
-            handleDocAdded(docId);
+            handleDocAdded(docId, dbBlockId);
             lastProcessTimes.delete(docId); // 处理完成后清理记录
         }, delay);
 
@@ -75,45 +85,70 @@
             validateParams: (body) => {
                 try {
                     const params = JSON.parse(body);
-                    return matchDatabaseRule(params.notebook, params.path, params.title);
+                    // 验证参数格式
+                    if (!(params && typeof params.notebook === 'string' &&
+                          typeof params.path === 'string' &&
+                          typeof params.title === 'string')) {
+                        return null;
+                    }
+
+                    // 匹配规则
+                    const matchedRule = matchDatabaseRule(params.notebook, params.path, params.title);
+                    if (!matchedRule) return null;
+
+                    // 提取文档ID
+                    const docId = extractDocId(params.path);
+                    if (!docId) return null;
+
+                    return { docId, dbBlockId: matchedRule.dbBlockId };
                 } catch (err) {
-                    console.error('解析请求参数失败:', err);
-                    return false;
-                }
-            },
-            getDocId: (result, options) => {
-                try {
-                    const params = JSON.parse(options.body);
-                    return extractDocId(params.path);
-                } catch (err) {
-                    console.error('从路径提取文档ID失败:', err);
+                    console.error('处理请求参数失败:', err);
                     return null;
                 }
+            },
+            processResult: (result, docInfo) => {
+                console.log(`开始处理文档 ${docInfo.docId}...`);
+                scheduleDocProcess(docInfo.docId, docInfo.dbBlockId, 0);
             }
         },
-        '/api/filetree/listDocsByPath': {
+        '/api/storage/setLocalStorageVal': {
             method: 'POST',
             validateParams: (body) => {
                 try {
                     const params = JSON.parse(body);
-                    return matchDatabaseRule(params.notebook, params.path, '');
+                    // 验证参数格式
+                    if (!(params &&
+                          params.key === 'local-filespaths' &&
+                          Array.isArray(params.val) &&
+                          params.val.length === 1)) {
+                            console.log(`跳过处理：val 数组长度为 ${params.val.length}，期望长度为 1`);
+                            return null;
+                    }
+                    // 遍历所有笔记本路径
+                    for (const item of params.val) {
+                        if (item.notebookId && Array.isArray(item.openPaths)) {
+                            // 检查 openPaths 数组长度
+                            if (item.openPaths.length !== 1) {
+                                console.log(`跳过处理：openPaths 数组长度为 ${item.openPaths.length}，期望长度为 1`);
+                                continue;
+                            }
+                            const path = item.openPaths[0];
+                            const matchedRule = matchDatabaseRule(item.notebookId, path, '');
+                            const docId = extractDocId(path);
+                            if (matchedRule && docId) {
+                                return { dbBlockId: matchedRule.dbBlockId, docId, isMultiDoc: false };
+                            }
+                        }
+                    }
+                    return null;
                 } catch (err) {
-                    console.error('解析请求参数失败:', err);
-                    return false;
-                }
-            },
-            getDocId: result => {
-                if (!result.data?.files?.length) {
-                    console.log('未找到需要处理的文档');
+                    console.error('处理请求参数失败:', err);
                     return null;
                 }
-                // 获取所有文档ID
-                const docIds = result.data.files.map(file => file.id);
-                console.log(`找到 ${docIds.length} 个文档待处理`);
-                // 异步处理每个文档
-                docIds.forEach((id, index) => scheduleDocProcess(id, index * 100));
-                // 返回 null 避免重复处理
-                return null;
+            },
+            processResult: (result, docInfo) => {
+                console.log(`开始处理文档 ${docInfo.docId}...`);
+                scheduleDocProcess(docInfo.docId, docInfo.dbBlockId, 0);
             }
         }
     };
@@ -126,25 +161,21 @@
         // 检查是否为支持的API
         const handler = API_HANDLERS[url];
         if (handler && options?.method === handler.method) {
-            // 如果有参数验证逻辑，先验证参数
-            if (handler.validateParams && !handler.validateParams(options?.body)) {
+            // 验证参数并获取文档信息
+            const docInfo = handler.validateParams(options?.body);
+            if (!docInfo) {
                 return originalFetch.apply(this, args);
             }
+
             const response = await originalFetch.apply(this, args);
             const result = await response.clone().json();
 
             // 异步处理数据库添加（不阻塞原始请求）
             try {
-                const docId = handler.getDocId(result, options);
-                if (!docId) {
-                    console.error('无法从响应中获取文档ID:', { url, result });
-                    return response;
-                }
-
-                console.log(`开始处理文档 ${docId}...`);
-                scheduleDocProcess(docId);
+                handler.processResult(result, docInfo);
             } catch (err) {
-                console.error('处理文档创建响应时出错:', err);
+                console.error('处理文档时出错:', err);
+                showMessage(`处理文档时发生错误`, true, 5000);
             }
 
             return response;
@@ -153,44 +184,21 @@
     };
 
     // 2. 实际处理函数
-    async function handleDocAdded(docId) {
+    async function handleDocAdded(docId, dbBlockId = null) {
         if (isProcessing || processedNotes.has(docId)) return;
 
         isProcessing = true;
         try {
             console.log(`开始处理文档 ${docId}...`);
-
-            // 获取文档信息
-            const docInfo = await getDataBySql(`SELECT * FROM blocks WHERE id='${docId}'`);
-            if (!docInfo || docInfo.length === 0) {
-                console.error('文档不存在');
+            if (!dbBlockId) {
+                console.log(`跳过处理文档 ${docId}：未提供数据库块ID`);
                 return;
             }
 
-            const doc = docInfo[0];
-            const boxid = doc.box;
-            const path = doc.path;
-            const title = doc.content;
-
-            // 使用统一的规则匹配函数
-            const matchedRule = matchDatabaseRule(boxid, path, title);
-            if (matchedRule) {
-                // 使用匹配到的规则处理文档
-                console.log(`文档 ${docId} 匹配 ${matchedRule.name} 规则，开始处理`);
-                // 后续使用 matchedRule 处理文档
-            } else {
-                console.log(`文档 ${docId} 不匹配任何规则：
-                    - 笔记本：${boxid}
-                    - 路径：${path}
-                    - 标题：${title}
-                    - 可用规则：${databaseRules.map(r => r.name).join(', ')}`);
-                return;
-            }
-
-                // 获取数据库信息
-                const db = await getDataBySql(`SELECT * FROM blocks WHERE type='av' AND id='${matchedRule.dbBlockId}'`);
+            // 获取数据库信息
+            const db = await getDataBySql(`SELECT * FROM blocks WHERE type='av' AND id='${dbBlockId}'`);
                 if (db.length === 0) {
-                    console.error(`${matchedRule.name} 数据库文档块未找到`);
+                    console.error(`数据库文档块 ${dbBlockId} 未找到`);
                     return;
                 }
 
@@ -199,7 +207,7 @@
                 // 检查是否已存在
                 const isInResult = await fetchSyncPost("/api/av/getAttributeViewKeys", { id: docId });
                 if (isInResult.data.some(item => item.avID === avID)) {
-                    console.log(`文档已存在于 ${matchedRule.name} 中`);
+                    console.log(`文档已存在于数据库 ${dbBlockId} 中`);
                     return;
                 }
 
@@ -209,14 +217,17 @@
                         avID: avID,
                         srcs: [{ id: docId, isDetached: false }]
                     });
-                    addedCount[matchedRule.name] = (addedCount[matchedRule.name] || 0) + 1;
                     processedNotes.add(docId);
-                    console.log(`成功添加文档 ${docId} 到 ${matchedRule.name}`);
+                    console.log(`成功添加文档 ${docId} 到数据库 ${dbBlockId}`);
+                    // 显示成功通知
+                    showMessage(`文档已成功添加到数据库`, false, 3000);
                 } catch (err) {
-                    console.error(`添加文档到 ${matchedRule.name} 失败:`, err);
+                    console.error(`添加文档到数据库 ${dbBlockId} 失败:`, err);
+                    showMessage(`添加文档到数据库失败`, true, 5000);
                 }
         } catch (error) {
             console.error('处理失败:', error);
+            showMessage(`处理文档时发生错误`, true, 5000);
         } finally {
             isProcessing = false;
         }
