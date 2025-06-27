@@ -46,9 +46,27 @@
     };
 
     // 统一处理文档添加的延迟逻辑
-    const scheduleDocProcess = (docId, delay = 0) => {
-        if (!docId) return;
-        setTimeout(() => handleDocAdded(docId), delay);
+    // 用于记录文档的最后处理时间
+    const lastProcessTimes = new Map();
+    const DEBOUNCE_DELAY = 1000; // 防抖延迟时间（毫秒）
+
+    const scheduleDocProcess = (docId, delay = DEBOUNCE_DELAY) => {
+        const now = Date.now();
+        const lastTime = lastProcessTimes.get(docId);
+
+        // 如果该文档在短时间内已经被处理过，取消之前的定时器
+        if (lastTime) {
+            clearTimeout(lastTime.timerId);
+        }
+
+        // 设置新的定时器
+        const timerId = setTimeout(() => {
+            handleDocAdded(docId);
+            lastProcessTimes.delete(docId); // 处理完成后清理记录
+        }, delay);
+
+        // 记录最新的处理时间和定时器ID
+        lastProcessTimes.set(docId, { timestamp: now, timerId });
     };
 
     const API_HANDLERS = {
