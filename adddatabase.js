@@ -347,23 +347,37 @@
 
         // 获取光标所在块的 ID
         let cursorElement = getCursorElement();
-        let cursorElementId = cursorElement?.closest('[data-type]')?.getAttribute('data-node-id');
+        // 根据光标位置选择菜单配置
+        const isTitle = protyle.querySelector('.protyle-title')?.contains(cursorElement);
+        if (isTitle) {
+            const menu = menus[0];
+            try {
+                await menuItemClick(menu.toAvBlockId, menu.toAvColName, menu.isBindBlock, menu.otherCols, menu.customAttrs, true, null);
+                showMessage(`已添加到${menu.name}`, false, 3000);
+            } catch (error) {
+                showMessage(`添加到${menu.name}失败: ${error.message}`, true, 3000);
+            }
+        } else {
+            let cursorElementId = cursorElement?.closest('[data-type]')?.getAttribute('data-node-id');
 
-        // 如果光标在列表项中，获取列表项的 ID
-        if (cursorElement?.closest('.li')) {
-            cursorElementId = cursorElement.closest('.li').getAttribute('data-node-id');
-        }
+            // 如果光标在列表项中，获取列表项的 ID
+            if (cursorElementId && cursorElement?.closest('.li')) {
+                cursorElementId = cursorElement.closest('.li').getAttribute('data-node-id');
+            } else {
+                showMessage('请先将光标定位到一个列表块', true, 3000);
+                return;
+            }
 
-        if (!cursorElementId) {
-            showMessage('请先将光标定位到一个块', true, 3000);
-            return;
-        }
-
-        // 使用第一个菜单配置
-        const menu = menus[1];
-        // 创建一个包含当前块的数组
-        const blocks = [{ dataset: { nodeId: cursorElementId } }];
-        await menuItemClick(menu.toAvBlockId, menu.toAvColName, menu.isBindBlock, menu.otherCols, menu.customAttrs, false, blocks);
+            const menu = menus[1];
+            // 创建一个包含当前块的数组
+            const blocks = [{ dataset: { nodeId: cursorElementId } }];
+            try {
+                await menuItemClick(menu.toAvBlockId, menu.toAvColName, menu.isBindBlock, menu.otherCols, menu.customAttrs, false, blocks);
+                showMessage(`已添加到${menu.name}`, false, 3000);
+            } catch (error) {
+                showMessage(`添加到${menu.name}失败: ${error.message}`, true, 3000);
+            }
+            }
     }
 
     // 获取光标所在元素
@@ -482,7 +496,7 @@
             const blockIds = [...blocks].map(block => block.dataset.nodeId);
             if(isEnableCustomAttrsInSelectedBlock) await setBlocksAttrs(blockIds, customAttrs);
         }
-        showMessage('数据添加成功', false, 3000);
+        showMessage(`数据添加成功`, false, 3000);
     }
     // 通过块id获取数据库id
     async function getAvIdByAvBlockId(blockId) {
