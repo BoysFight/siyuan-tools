@@ -143,8 +143,8 @@ function showMessage(message, isError = false, delay = 7000) {
                     if (!(params &&
                           params.key === 'local-filespaths' &&
                           Array.isArray(params.val) &&
-                          params.val.length === 1)) {
-                            // console.log(`跳过处理：val 数组长度为 ${params.val.length}，期望长度为 1`);
+                          params.val.length <= 2)) {
+                            // console.log(`跳过处理：val 数组长度为 ${params.val.length}，期望长度为 <= 2`);
                             return null;
                     }
                     // 遍历所有笔记本路径
