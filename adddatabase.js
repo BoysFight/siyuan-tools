@@ -348,7 +348,7 @@
         // 获取光标所在块的 ID
         let cursorElement = getCursorElement();
         // 根据光标位置选择菜单配置
-        const titleEl = document.querySelector('.protyle-title');
+        const titleEl = protyle?.querySelector('.protyle-title') || document.querySelector('.protyle-title');
         const isTitle = titleEl?.contains(cursorElement);
         if (isTitle) {
             const menu = menus[0];
