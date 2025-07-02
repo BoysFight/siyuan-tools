@@ -126,10 +126,11 @@
                         const currentValues = existingValues;
 
                         // 收集所有需要添加的块ID
-                        const blockIdsToAdd = new Set([docId]);
+                        const blockIdsToAdd = new Set();
                         
                         // 检查当前块是否包含引用链接
                         const currentBlock = await getBlockByID(rowID);
+                        let hasValidRefs = false;
                         if (currentBlock && currentBlock.markdown) {
                             // 使用正则表达式匹配引用链接格式 ((blockid 'title'))
                             const refMatches = currentBlock.markdown.match(/\(\(([\w-]+)\s+'[^']*'\)\)/g);
@@ -144,9 +145,15 @@
                                          refBlock.content.startsWith('Feature-') || 
                                          refBlock.content.startsWith('Story-'))) {
                                         blockIdsToAdd.add(blockId);
+                                        hasValidRefs = true;
                                     }
                                 }
                             }
+                        }
+
+                        // 如果没有找到有效的引用文档，则添加当前文档
+                        if (!hasValidRefs) {
+                            blockIdsToAdd.add(docId);
                         }
 
                         // 检查是否有新的关系需要添加
