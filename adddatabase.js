@@ -1,4 +1,4 @@
-// 添加块到指定数据库（支持绑定块和不绑定块，支持文档块和普通块）
+// 添加块到指定数据库(项目库，日程库)（支持绑定块和不绑定块，支持文档块和普通块）
 // see https://ld246.com/article/1746153210116
 // 注意：只能在块菜单中操作（你的右键可能不是块菜单）
 // 本应用已全部用完Achuan-2大佬提供的所有api see https://ld246.com/article/1733365731025
@@ -125,14 +125,60 @@
                         // Use existingValues if provided, otherwise get current values
                         const currentValues = existingValues;
 
-                        // Check if relation already exists
-                        const relationExists = currentValues.some(
-                            value => value.block?.id === docId || value.relation?.blockIDs?.includes(docId)
+                        // 收集所有需要添加的块ID
+                        const blockIdsToAdd = new Set([docId]);
+                        
+                        // 检查当前块是否包含引用链接
+                        const currentBlock = await getBlockByID(rowID);
+                        if (currentBlock && currentBlock.markdown) {
+                            // 使用正则表达式匹配引用链接格式 ((blockid 'title'))
+                            const refMatches = currentBlock.markdown.match(/\(\(([\w-]+)\s+'[^']*'\)\)/g);
+                            if (refMatches) {
+                                for (const match of refMatches) {
+                                    const blockId = match.match(/\(\(([\w-]+)/)[1];
+                                    const refBlock = await getBlockByID(blockId);
+                                    
+                                    // 检查引用的块是否为文档且标题以指定前缀开头
+                                    if (refBlock && refBlock.type === 'd' && 
+                                        (refBlock.content.startsWith('Epic-') || 
+                                         refBlock.content.startsWith('Feature-') || 
+                                         refBlock.content.startsWith('Story-'))) {
+                                        blockIdsToAdd.add(blockId);
+                                    }
+                                }
+                            }
+                        }
+
+                        // 检查是否有新的关系需要添加
+                        const existingBlockIds = new Set(
+                            currentValues.flatMap(value => [
+                                value.block?.id,
+                                ...(value.relation?.blockIDs || [])
+                            ]).filter(Boolean)
                         );
 
-                        if (!relationExists) {
-                            const newBlockIDs = [...(currentValues[0]?.relation?.blockIDs || []), docId];
+                        // 过滤出需要添加的新ID
+                        const newBlockIDs = [...blockIdsToAdd].filter(id => !existingBlockIds.has(id));
+
+                        if (newBlockIDs.length > 0) {
+                            // 合并现有的和新的blockIDs
+                            const allBlockIDs = [...(currentValues[0]?.relation?.blockIDs || []), ...newBlockIDs];
                             const newContents = [];
+                            // 对每个新添加的块ID创建关系
+                            for (const blockId of newBlockIDs) {
+                                const block = await getBlockByID(blockId);
+                                if (block) {
+                                    newContents.push({
+                                        type: "block",
+                                        blockID: blockId,
+                                        block: {
+                                            id: blockId,
+                                            content: block.content
+                                        },
+                                        isDetached: false
+                                    });
+                                }
+                            }
                             // const newRelation = {
                             //     type: "block",
                             //     blockID: docId,
@@ -147,8 +193,8 @@
                             return {
                                 type: "relation",
                                 relation: {
-                                    blockIDs: newBlockIDs,
-                                    contents: newContents
+                                    blockIDs: allBlockIDs,
+                                    contents: [...(currentValues[0]?.relation?.contents || []), ...newContents]
                                 },
                                 id: cellID
                             };
