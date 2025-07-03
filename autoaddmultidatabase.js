@@ -18,11 +18,18 @@ function showMessage(message, isError = false, delay = 7000) {
 
     // 配置多个数据库的规则
     const databaseRules = [
+        // {
+        //     name: '项目文档数据库',
+        //     dbBlockId: '20240918154915-8ktx2i4', // 数据库块ID
+        //     notebookID: '20230323101042-0iji3w9', // 笔记本ID
+        //     pathPattern: /^\/20240430105640-waf30sl\//i, // 文档路径匹配规则
+        //     titlePattern: /^(Story|Epic|Feature)-/i // 文档标题匹配规则
+        // },
         {
             name: '项目文档数据库',
             dbBlockId: '20240918154915-8ktx2i4', // 数据库块ID
-            notebookID: '20230323101042-0iji3w9', // 笔记本ID
-            pathPattern: /^\/20240430105640-waf30sl\//i, // 文档路径匹配规则
+            notebookID: null, // 笔记本ID
+            pathPattern: null, // 文档路径匹配规则
             titlePattern: /^(Story|Epic|Feature)-/i // 文档标题匹配规则
         },
         {
@@ -39,7 +46,7 @@ function showMessage(message, isError = false, delay = 7000) {
     // 检查文档是否符合数据库规则
     const matchDatabaseRule = (notebookId, path, title) => {
         return databaseRules.find(rule => {
-            const matchNotebook = rule.notebookID === notebookId;
+            const matchNotebook = !rule.notebookID || rule.notebookID === notebookId;
             const matchPath = rule.pathPattern?.test(path) ?? true;
             const matchTitle = rule.titlePattern ? rule.titlePattern.test(title) : true;
             return matchNotebook && matchPath && matchTitle;
