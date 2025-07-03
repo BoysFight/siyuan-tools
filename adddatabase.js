@@ -73,158 +73,123 @@
                 {
                     colName: '项目',
                     getColValue: async (keyID, rowID, cellID, avID, existingValues) => {
-                        try {
-                            console.info(`开始处理项目关联 - rowID: ${rowID}, avID: ${avID}`);
-
-                            // 获取当前块的根文档
-                            const blockInfo = await requestApi('/api/block/getBlockInfo', {id: rowID});
-                            if (blockInfo?.code !== 0) {
-                                console.error(`获取块信息失败 - rowID: ${rowID}, 错误信息: ${blockInfo?.msg}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-                            if (!blockInfo.data?.rootID) {
-                                console.warn(`块没有根文档ID - rowID: ${rowID}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-
-                            console.info(`获取根文档信息 - rootID: ${blockInfo.data.rootID}`);
-                            const docId = blockInfo.data.rootID;
-                            const docInfo = await requestApi('/api/block/getBlockInfo', {id: docId});
-                            if (docInfo?.code !== 0) {
-                                console.error(`获取根文档信息失败 - rootID: ${docId}, 错误信息: ${docInfo?.msg}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-
-                            // 验证文档标题格式
-                            const docTitle = docInfo.data?.rootTitle?.trim();
-                            if (!docTitle) {
-                                console.warn(`根文档标题为空 - rootID: ${docId}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-
-                            // 验证文档类型
-                            const validPrefixes = ['Epic', 'Feature', 'Story'];
-                            const hasValidPrefix = validPrefixes.some(prefix => docTitle.startsWith(prefix));
-                            if (!hasValidPrefix) {
-                                console.info(`文档类型不符合要求 - title: ${docTitle}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-
-                            // 获取文档属性
-                            const docAttrs = await requestApi('/api/attr/getBlockAttrs', {id: docId});
-                            if (!docAttrs?.data) {
-                                console.warn(`获取根文档属性失败 - rootID: ${docId}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-
-                            // 验证文档属性
-                            if (!docAttrs.data['custom-avs']) {
-                                console.warn(`文档缺少必要属性 custom-avs - rootID: ${docId}`);
-                                return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
-                            }
-                        // Use existingValues if provided, otherwise get current values
-                        const currentValues = existingValues;
-
-                        // 收集所有需要添加的块ID
-                        const blockIdsToAdd = new Set();
-                        
-                        // 检查当前块是否包含引用链接
-                        const currentBlock = await getBlockByID(rowID);
-                        let hasValidRefs = false;
-                        if (currentBlock && currentBlock.markdown) {
-                            // 使用正则表达式匹配引用链接格式 ((blockid 'title'))
-                            const refMatches = currentBlock.markdown.match(/\(\(([\w-]+)\s+'[^']*'\)\)/g);
-                            if (refMatches) {
-                                for (const match of refMatches) {
-                                    const blockId = match.match(/\(\(([\w-]+)/)[1];
-                                    const refBlock = await getBlockByID(blockId);
-                                    
-                                    // 检查引用的块是否为文档且标题以指定前缀开头
-                                    if (refBlock && refBlock.type === 'd' && 
-                                        (refBlock.content.startsWith('Epic-') || 
-                                         refBlock.content.startsWith('Feature-') || 
-                                         refBlock.content.startsWith('Story-'))) {
-                                        blockIdsToAdd.add(blockId);
-                                        hasValidRefs = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        // 如果没有找到有效的引用文档，则添加当前文档
-                        if (!hasValidRefs) {
-                            blockIdsToAdd.add(docId);
-                        }
-
-                        // 检查是否有新的关系需要添加
+                        // 预定义空关系返回值，避免重复创建
+                        // 高效处理现有关系
                         const existingBlockIds = new Set(
-                            currentValues.flatMap(value => [
+                            (existingValues || []).flatMap(value => [
                                 value.block?.id,
                                 ...(value.relation?.blockIDs || [])
                             ]).filter(Boolean)
                         );
+                        const emptyRelation = {"type": "relation", "relation": {"blockIDs": [...new Set([...existingBlockIds])], "contents": []}, "id": cellID};
 
-                        // 过滤出需要添加的新ID
-                        const newBlockIDs = [...blockIdsToAdd].filter(id => !existingBlockIds.has(id));
+                        if (!rowID) {
+                            console.warn('缺少必要参数 rowID');
+                            return emptyRelation;
+                        }
 
-                        if (newBlockIDs.length > 0) {
-                            // 合并现有的和新的blockIDs
-                            const allBlockIDs = [...(currentValues[0]?.relation?.blockIDs || []), ...newBlockIDs];
-                            const newContents = [];
-                            // 对每个新添加的块ID创建关系
-                            for (const blockId of newBlockIDs) {
-                                const block = await getBlockByID(blockId);
-                                if (block) {
-                                    newContents.push({
-                                        type: "block",
-                                        blockID: blockId,
-                                        block: {
-                                            id: blockId,
-                                            content: block.content
-                                        },
-                                        isDetached: false
-                                    });
+                        try {
+                            // 获取当前块内容并检查引用
+                            const currentBlock = await getBlockByID(rowID);
+                            if (!currentBlock?.markdown) {
+                                return emptyRelation;
+                            }
+
+                            // 优化的正则表达式，一次性提取所有引用ID
+                            const blockIdsToAdd = new Set();
+                            const refRegex = /\(\(([\w-]+)\s+'[^']*'\)\)/g;
+                            const refIds = [...currentBlock.markdown.matchAll(refRegex)].map(match => match[1]);
+
+                            if (refIds.length > 0) {
+                                // 批量获取所有引用块信息
+                                const refBlocks = await Promise.all(
+                                    refIds.map(id => getBlockByID(id))
+                                );
+
+                                // 检查每个引用块
+                                refBlocks.forEach((refBlock, index) => {
+                                    if (refBlock?.type === 'd' &&
+                                        ['Epic-', 'Feature-', 'Story-'].some(prefix => refBlock.content.startsWith(prefix))) {
+                                        blockIdsToAdd.add(refIds[index]);
+                                    }
+                                });
+                            } else {
+                                // 递归获取父块引用
+                                const checkParentBlockRefs = async (block) => {
+                                    if (!block?.parent_id) return null;
+
+                                    const parentBlock = await getBlockByID(block.parent_id);
+                                    if (!parentBlock) return null;
+
+                                    if (parentBlock.type === 'i' && parentBlock.markdown) {
+                                        const refMatches = [...(parentBlock.markdown.matchAll(/\(\(([\w-]+)\s+'[^']*'\)\)/g))]
+                                            .map(match => match[1]);
+
+                                        if (refMatches.length > 0) {
+                                            const refBlocks = await Promise.all(
+                                                refMatches.map(id => getBlockByID(id))
+                                            );
+
+                                            const validRef = refBlocks.find((refBlock, index) =>
+                                                refBlock?.type === 'd' &&
+                                                ['Epic-', 'Feature-', 'Story-'].some(prefix =>
+                                                    refBlock.content.startsWith(prefix)
+                                                )
+                                            );
+
+                                            if (validRef) {
+                                                return refMatches[refBlocks.indexOf(validRef)];
+                                            }
+                                        }
+                                    }
+                                    return checkParentBlockRefs(parentBlock);
+                                };
+
+                                const validParentRef = await checkParentBlockRefs(currentBlock);
+                                if (validParentRef) {
+                                    blockIdsToAdd.add(validParentRef);
                                 }
                             }
-                            // const newRelation = {
-                            //     type: "block",
-                            //     blockID: docId,
-                            //     block: {
-                            //         id: docId,
-                            //         content: docTitle
-                            //     },
-                            //     isDetached: false
-                            // };
-                            // const newContents = [...(currentValues[0]?.relation?.contents || []), newRelation];
 
+                            // 如果没有找到有效的引用，添加当前文档
+                            if (blockIdsToAdd.size === 0) {
+                                // 并行获取块信息和文档信息
+                                docId = currentBlock.root_id
+                                const docBlock = await getBlockByID(docId);
+                                if (!docBlock) {
+                                    console.warn(`获取文档块失败 - docId: ${docId}`);
+                                    return emptyRelation;
+                                }
+
+                                // 验证文档标题
+                                const docTitle = docBlock.content?.trim();
+                                if (!docTitle) {
+                                    console.warn(`文档标题为空 - docId: ${docId}`);
+                                    return emptyRelation;
+                                }
+
+                                // 验证文档类型
+                                if (!['Epic-', 'Feature-', 'Story-'].some(prefix => docTitle.startsWith(prefix))) {
+                                    console.info(`文档类型不符合要求 - title: ${docTitle}`);
+                                    return emptyRelation;
+                                }
+
+                                blockIdsToAdd.add(docId);
+                            }
+
+                            // 构建最终的关系对象
                             return {
                                 type: "relation",
                                 relation: {
-                                    blockIDs: allBlockIDs,
-                                    contents: [...(currentValues[0]?.relation?.contents || []), ...newContents]
+                                    blockIDs: [...new Set([...existingBlockIds, ...blockIdsToAdd])],
+                                    contents: []
                                 },
                                 id: cellID
                             };
-                        }
-
-                        // Return existing relations if no update needed
-                        return {
-                            type: "relation",
-                            "relation": currentValues[0]?.relation || { blockIDs: [], contents: [] },
-                            id: cellID
-                        };
 
                         } catch (error) {
-                            console.error('获取项目信息失败:', error);
-                            console.error('错误详情:', {
-                                message: error.message,
-                                stack: error.stack,
-                                rowID,
-                                avID,
-                                keyID,
-                                cellID
-                            });
-                            return {"type": "relation", "relation": {"blockIDs": [], "contents": []}, "id": cellID};
+                            console.error('处理项目关联时发生错误:', error);
+                            return emptyRelation;
                         }
                     },
                 },
