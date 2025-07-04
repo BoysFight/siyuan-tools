@@ -358,10 +358,33 @@
         }
     ];
 
+    // 获取当前编辑器的函数
+    function getCurrentProtyle() {
+        // 优先获取当前焦点所在的编辑器
+        const activeElement = document.activeElement;
+        const focusedProtyle = activeElement?.closest('.protyle:not(.fn__none)');
+        if (focusedProtyle) {
+            return focusedProtyle;
+        }
+        
+        // 其次获取活动窗口的编辑器
+        const activeWndProtyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)');
+        if (activeWndProtyle) {
+            return activeWndProtyle;
+        }
+        
+        // 最后获取任意可见编辑器
+        return document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
+    }
+
     // 添加快捷键处理函数
     async function handleHotkey() {
-        const protyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)')||document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
-        if (!protyle) return;
+        const protyle = getCurrentProtyle();
+        if (!protyle) {
+            console.warn('未找到可用的编辑器窗口');
+            showMessage('请先打开一个文档', true, 3000);
+            return;
+        }
 
         // 获取光标所在块的 ID
         let cursorElement = getCursorElement();
@@ -450,7 +473,12 @@
         }
         let blocks = customBlocks;
         if (!blocks) {
-            const protyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)')||document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
+            const protyle = getCurrentProtyle();
+            if (!protyle) {
+                console.warn('未找到可用的编辑器窗口');
+                showMessage('请先打开一个文档', true, 3000);
+                return;
+            }
             if(isTitleMenu) {
                 // 添加文档块到数据库
                 const docTitleEl = protyle?.querySelector('.protyle-title') || document.querySelector('.protyle-title');

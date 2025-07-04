@@ -88,8 +88,10 @@ export class M_didaSync {
         }
 
         // 检查状态变化
-        if (event?.状态?.content !== (updatedTask.status === 2 ? "完成" : "未完成")) {
-            const selectdata: ISelectOption[] = [{ content: updatedTask.status === 2 ? "完成" : "未完成" }];
+        const expectedStatus = updatedTask.status === 2 ? "完成" : "未完成";
+        if (event?.状态?.content !== expectedStatus && 
+            !(event?.状态?.content === "归档" && updatedTask.status === 2)) {
+            const selectdata: ISelectOption[] = [{ content: expectedStatus }];
             updates.push(api.updateAttrViewCell_pro(
                 blockId,
                 rootId,
@@ -173,7 +175,7 @@ export class M_didaSync {
                         continue; // 跳过 startDate 小于等于昨天的任务，避免数量太多
                     }
 
-                    const status = event?.状态?.content === "完成" ? 2 : 0;
+                    const status = (event?.状态?.content === "完成" || event?.状态?.content === "归档") ? 2 : 0;
                     const isCompleted = status === 2;
 
                     // 计算优先级
@@ -246,7 +248,7 @@ export class M_didaSync {
                     }
 
                     // 跳过已完成状态的任务，当前api不能把完成任务改为非完成，可考虑过滤
-                    if (event?.状态?.content === "完成") {
+                    if (event?.状态?.content === "完成" || event?.状态?.content === "归档") {
                         continue;
                     }
 

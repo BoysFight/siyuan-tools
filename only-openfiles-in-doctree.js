@@ -94,6 +94,8 @@
     }
     // 在目录树中定位当前文档
     async function focusCurrentDocInTrees() {
+        // 保存当前焦点元素
+        const activeElement = document.activeElement;
         // 等待大纲切换完毕，最终焦点在文档树
         if(lastFoucsIn === 'tree') await sleep(120);
         // 定位当前文档
@@ -102,6 +104,10 @@
         await whenElementExist(()=>{
             return document.querySelector('ul.b3-list[data-url] li[data-type="navigation-file"].b3-list-item--focus');
         });
+        // 如果之前的焦点是在编辑器内，则恢复焦点
+        if(activeElement?.closest('.protyle-wysiwyg')) {
+            activeElement.focus();
+        }
         // 处理官方定位，在未打开目录树时，左侧dock区目录树显示隐藏按钮样式会获取焦点的bug
         await sleep(40);
         const dockFileTreeBtn = document.querySelector('#dockLeft span[data-type="file"]');
