@@ -141,6 +141,47 @@ function showMessage(message, isError = false, delay = 7000) {
                 scheduleDocProcess(docInfo.docId, docInfo.dbBlockId, 0);
             }
         },
+        '/api/filetree/createDocWithMd': {
+            method: 'POST',
+            validateParams: (body) => {
+                try {
+                    const params = JSON.parse(body);
+                    // 验证参数格式
+                    if (!(params && typeof params.path === 'string')) {
+                        return null;
+                    }
+
+                    // 提取路径的最后一个部分（文档标题）
+                    const pathParts = params.path.split('/');
+                    const lastPart = pathParts[pathParts.length - 1];
+                    
+                    // 检查是否符合Epic-/Feature-/Story-规则
+                    if (!/^(Epic|Feature|Story)-/.test(lastPart)) {
+                        return null;
+                    }
+
+                    // 查找匹配的项目数据库规则
+                    const projectRule = databaseRules.find(rule => 
+                        rule.name === '项目文档数据库' && 
+                        rule.titlePattern && 
+                        rule.titlePattern.test(lastPart)
+                    );
+                    
+                    if (!projectRule) return null;
+
+                    return { dbBlockId: projectRule.dbBlockId, waitForDocId: true };
+                } catch (err) {
+                    console.error('处理请求参数失败:', err);
+                    return null;
+                }
+            },
+            processResult: (result, docInfo) => {
+                if (!result?.data) return;
+                const docId = result.data;
+                console.log(`开始处理新创建的文档 ${docId}...`);
+                scheduleDocProcess(docId, docInfo.dbBlockId, 0);
+            }
+        },
         '/api/storage/setLocalStorageVal': {
             method: 'POST',
             validateParams: (body) => {
@@ -190,7 +231,8 @@ function showMessage(message, isError = false, delay = 7000) {
         // 快速路径：只检查特定的 API
         if (!url.startsWith('/api/storage/setLocalStorageVal') &&
             !url.startsWith('/api/filetree/renameDoc') &&
-            !url.startsWith('/api/filetree/createDailyNote')) {
+            !url.startsWith('/api/filetree/createDailyNote') &&
+            !url.startsWith('/api/filetree/createDocWithMd')) {
             return originalFetch.apply(this, args);
         }
 
