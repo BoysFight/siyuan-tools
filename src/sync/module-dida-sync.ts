@@ -1,7 +1,6 @@
 import steveTools from "@/index";
-import * as api from "@/api"
+import * as api from "@/api/api"
 import { showMessage } from "siyuan";
-import { Dida } from "@/calendar/share/dida";
 import * as myF from "@/calendar/myF";
 import { moduleInstances } from '@/index';
 import { TickTickOfficialClient, TickTickTask } from './ticktick-official-client';
@@ -89,7 +88,7 @@ export class M_didaSync {
 
         // 检查状态变化
         const expectedStatus = updatedTask.status === 2 ? "完成" : "未完成";
-        if (event?.状态?.content !== expectedStatus && 
+        if (event?.状态?.content !== expectedStatus &&
             !(event?.状态?.content === "归档" && updatedTask.status === 2)) {
             const selectdata: ISelectOption[] = [{ content: expectedStatus }];
             updates.push(api.updateAttrViewCell_pro(
@@ -357,13 +356,6 @@ export class M_didaSync {
                             let newTaskId;
                             if (this.settingdata["cal-dida-use-official-api"]) {
                                 newTaskId = result.id;
-                            } else {
-                                // 非官方API的ID获取逻辑
-                                if (result.id2etag && Object.keys(result.id2etag).length > 0) {
-                                    newTaskId = Object.keys(result.id2etag)[0];
-                                } else if (result.add && result.add.length > 0) {
-                                    newTaskId = result.add[0].id;
-                                }
                             }
 
                             if (newTaskId) {
@@ -692,14 +684,6 @@ export class M_didaSync {
                 tags: taskData.tags // 添加标签字段
             };
             return await this.officialClient.createTask(officialTask);
-        } else {
-            // 使用非官方API
-            const dida = new Dida({
-                username: this.settingdata["cal-dida-username"],
-                password: this.settingdata["cal-dida-password"]
-            });
-            const res = await dida.create(taskData);
-            return await res.json();
         }
     }
 
@@ -731,16 +715,6 @@ export class M_didaSync {
                 tags: taskData.tags // 添加标签字段
             };
             return await this.officialClient.updateTask(taskId, officialTask);
-        } else {
-            // 使用非官方API
-            const dida = new Dida({
-                username: this.settingdata["cal-dida-username"],
-                password: this.settingdata["cal-dida-password"]
-            });
-            return await dida.update({
-                id: taskId,
-                ...taskData
-            });
         }
     }
 }
