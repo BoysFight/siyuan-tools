@@ -6,11 +6,43 @@
  * API 文档见 [API_zh_CN.md](https://github.com/siyuan-note/siyuan/blob/master/API_zh_CN.md)
  */
 
-import { fetchPost, fetchSyncPost, IWebSocketData } from "siyuan";
-import { IOperation, Protyle } from "siyuan";
+import { fetchPost, fetchSyncPost, IWebSocketData, showMessage } from "siyuan";
 import { ISelectOption } from "@/calendar/interface";
-import { settingdata } from ".";
+import { settingdata } from "..";
+import { AVManager } from "./db_pro";
+// 创建 AVManager 实例 - 可以根据需要进行配置
+const avManager = new AVManager();
 
+// 请求队列，使用批量处理优化性能
+const cellUpdateQueue: Array<{
+    id: string;
+    avID: string;
+    keyID: string;
+    keyName?: string;
+    value: any;
+    type: string;
+    endtime?: string;
+    resolve: (value: any) => void;
+    reject: (reason: any) => void;
+}> = [];
+
+// 添加块到数据库的队列 - 按 avID 分组
+const addBlockQueue: Map<string, Array<{
+    id: string;
+    avID: string;
+    resolve: (value: any) => void;
+    reject: (reason: any) => void;
+}>> = new Map();
+
+let isProcessingQueue = false;
+const getBatchDelay = () => settingdata['transaction-delay'] || 1000; // 使用配置的事务延迟时间
+const getQueueDelay = () => Math.min(settingdata['transaction-delay'] / 5, 200) || 200; // 队列延迟为事务延迟的1/5，最大200ms
+const MAX_WAIT_TIME = 5000; // 最大等待时间，防止单个请求等待太久
+
+// 队列处理定时器 - 按 avID 分别管理
+const addBlockQueueTimers: Map<string, NodeJS.Timeout> = new Map();
+let cellUpdateQueueTimer: NodeJS.Timeout | null = null;
+let cellUpdateQueueStartTime: number | null = null; // 记录队列开始时间
 export async function request(url: string, data: any) {
     let response: IWebSocketData = await fetchSyncPost(url, data);
     let res = response.code === 0 ? response.data : `${url}error`;
@@ -527,7 +559,7 @@ export async function currentTime(): Promise<number> {
 
 // **************************************** User ****************************************
 export async function refresh() {
-    location.reload()
+    fetch('/api/ui/reloadUI', { method: 'POST' })
 }
 
 export async function sync() {
@@ -684,36 +716,68 @@ export async function addBlockToDatabase(id: string, databaseId: string) {
 }
 
 
-export async function addBlockToDatabase_pro(id: string, avID: string, protyle?: Protyle) {
-    let doOperations: IOperation[] = [];
-    let undoOperations: IOperation[] = [];
-    doOperations.push(
-        {
-            action: "insertAttrViewBlock",
-            avID: avID,
-            ignoreFillFilter: true,
-            srcs: [{
-                id: id,
-                isDetached: false
-            }],
-            // blockID: avID //TODO:这里的blockID是数据库块的id
-        },
-    );
-    doOperations.push(
-        {
-            action: "doUpdateUpdated",
-            id: id,
-            data: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().replace(/[:\-]|(\.\d{3})|T/g, "").slice(0, 14)
+export async function addBlockToDatabase_pro(id: string, avID: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+        // 按 avID 分组添加到队列中
+        if (!addBlockQueue.has(avID)) {
+            addBlockQueue.set(avID, []);
         }
-    );
-    undoOperations.push(
-        {
-            action: "removeAttrViewBlock",
-            srcIDs: [id],
-            avID: avID
+
+        addBlockQueue.get(avID)!.push({
+            id,
+            avID,
+            resolve,
+            reject
+        });
+
+        // 为每个 avID 单独管理定时器
+        if (addBlockQueueTimers.has(avID)) {
+            clearTimeout(addBlockQueueTimers.get(avID)!);
         }
-    );
-    Protyle.prototype.transaction(doOperations, undoOperations);
+
+        const timer = setTimeout(() => {
+            processAddBlockQueueForAvID(avID);
+            addBlockQueueTimers.delete(avID);
+        }, getQueueDelay());
+
+        addBlockQueueTimers.set(avID, timer);
+    });
+}
+
+// 处理特定 avID 的添加块队列
+async function processAddBlockQueueForAvID(avID: string) {
+    const blocks = addBlockQueue.get(avID);
+    if (!blocks || blocks.length === 0) {
+        return;
+    }
+
+    try {
+        console.log(`🚀 [批量添加块] 开始处理 ${blocks.length} 个块，avID: ${avID}`);
+
+        // 构建批量添加的数据
+        const sources = blocks.map(block => ({
+            id: block.id,
+            isDetached: false
+        }));
+
+        // 使用批量API添加所有块
+        const result = await avManager.addAttributeViewBlocks(avID, sources, {
+            ignoreFillFilter: true
+        });
+
+        // 成功后解析所有Promise
+        blocks.forEach(block => block.resolve(result));
+
+        console.log(`✅ [批量添加块] 成功添加 ${blocks.length} 个块到 avID: ${avID}`);
+
+    } catch (error) {
+        console.error(`❌ [批量添加块] 添加块失败，avID ${avID}:`, error);
+        // 错误时拒绝所有Promise
+        blocks.forEach(block => block.reject(error));
+    }
+
+    // 清除已处理的队列
+    addBlockQueue.delete(avID);
 }
 
 interface UpdateMainKeyParams {
@@ -726,6 +790,7 @@ interface UpdateMainKeyParams {
 // Modify the function to accept an object parameter
 export async function updatemainkey(params: UpdateMainKeyParams): Promise<any> {
     return new Promise((resolve, reject) => {
+        const delay = settingdata['transaction-delay'] || 1000;
         setTimeout(async () => {
             try {
                 const { avID, keyID, content, blockID } = params; // Destructure the parameters
@@ -747,13 +812,11 @@ export async function updatemainkey(params: UpdateMainKeyParams): Promise<any> {
             } catch (error) {
                 reject(error);
             }
-        }, 2000); // Delay execution by 2000 milliseconds (2 seconds)
+        }, delay); // 使用配置的延迟时间
     });
 }
 
 
-// 添加延时控制变量
-let lastTransactionTime = 0;
 
 export async function updateAttrViewCell_pro(
     id: string,
@@ -768,18 +831,203 @@ export async function updateAttrViewCell_pro(
         },
         action: string
     },
-    type: 'date' | 'select' | 'relation' | 'checkbox' | 'text',
+    type: 'date' | 'select' | 'relation' | 'checkbox' | 'text' | 'mSelect' | 'url',
     endtime?: string
-): Promise<boolean> {
-    const doOperations: IOperation[] = [];
-    const newId = await generateSiyuanID() as string;
-    let cellData: any;
+): Promise<any> {
+    return new Promise((resolve, reject) => {
+        // 将所有请求添加到队列中
+        cellUpdateQueue.push({
+            id,
+            avID,
+            keyID,
+            value,
+            type,
+            endtime,
+            resolve,
+            reject
+        });
+
+        console.log(`📝 [队列] 添加单元格更新请求，队列当前长度: ${cellUpdateQueue.length}, avID: ${avID}`);
+
+        // 记录队列开始时间
+        if (!cellUpdateQueueStartTime) {
+            cellUpdateQueueStartTime = Date.now();
+        }
+
+        // 智能定时器策略
+        if (cellUpdateQueueTimer) {
+            clearTimeout(cellUpdateQueueTimer);
+        }
+
+        // 动态调整等待时间
+        const queueAge = Date.now() - cellUpdateQueueStartTime;
+        const currentQueueSize = cellUpdateQueue.length;
+
+        let waitTime = getQueueDelay();
+
+        // 如果队列已经等待太久或队列很大，立即处理
+        if (queueAge >= MAX_WAIT_TIME || currentQueueSize >= 50) {
+            waitTime = 150; // 几乎立即处理
+            console.log(`⚡ [队列] 触发立即处理 - 队列大小: ${currentQueueSize}, 等待时间: ${queueAge}ms`);
+        } else if (currentQueueSize >= 4) {
+            waitTime = 500; // 减少等待时间
+        }
+
+        cellUpdateQueueTimer = setTimeout(() => {
+            processQueue();
+            cellUpdateQueueTimer = null;
+            cellUpdateQueueStartTime = null;
+        }, waitTime);
+    });
+}
+
+// 处理队列函数 - 使用批量API优化
+async function processQueue() {
+    if (isProcessingQueue || cellUpdateQueue.length === 0) {
+        console.log(`⏸️ [队列处理] 跳过处理 - 正在处理: ${isProcessingQueue}, 队列长度: ${cellUpdateQueue.length}`);
+        return;
+    }
+
+    isProcessingQueue = true;
+    const totalItems = cellUpdateQueue.length;
+    console.log(`🚀 [队列处理] 开始处理单元格更新队列，共 ${totalItems} 个项目`);
+
+    // 按 avID 分组处理
+    const groupedUpdates = new Map<string, Array<typeof cellUpdateQueue[0]>>();
+
+    // 取出所有待处理的更新
+    const allUpdates: Array<typeof cellUpdateQueue[0]> = [];
+    while (cellUpdateQueue.length > 0) {
+        const update = cellUpdateQueue.shift();
+        if (!update) continue;
+        allUpdates.push(update);
+
+        if (!groupedUpdates.has(update.avID)) {
+            groupedUpdates.set(update.avID, []);
+        }
+        groupedUpdates.get(update.avID)!.push(update);
+    }
+
+    console.log(`📊 [队列处理] 分组结果: ${groupedUpdates.size} 个avID，总共 ${allUpdates.length} 个更新`);
+
+    // 按 avID 分组批量处理
+    for (const [avID, updates] of groupedUpdates.entries()) {
+        try {
+            console.log(`🔄 [批量更新单元格] 开始处理 ${updates.length} 个单元格更新，avID: ${avID}`);
+
+            // 预处理所有值并获取键信息
+            const processedUpdates = await Promise.all(
+                updates.map(async (update) => {
+                    const processedValue = await processCellValue(update.value, update.type, update.endtime);
+
+                    // 如果没有keyName，需要根据keyID获取
+                    let keyName = update.keyName;
+                    if (!keyName && update.keyID) {
+                        const keys = await avManager.getAttributeViewKeysByAvID(avID);
+                        const key = keys.find(k => k.id === update.keyID);
+                        keyName = key?.name;
+                    }
+
+                    return {
+                        ...update,
+                        keyName,
+                        processedValue
+                    };
+                })
+            );
+
+            // 构建批量更新数据
+            const batchUpdates = processedUpdates
+                .filter(update => update.keyName) // 只处理有效的键名
+                .map(update => ({
+                    keyName: update.keyName!,
+                    rowID: update.id,
+                    value: update.processedValue
+                }));
+
+            if (batchUpdates.length > 0) {
+                // 使用批量API更新单元格
+                const result = await avManager.batchUpdateCells(avID, batchUpdates);
+
+                // 成功后解析所有Promise
+                updates.forEach(update => update.resolve(result));
+
+                console.log(`✅ [批量更新单元格] 成功更新 ${batchUpdates.length} 个单元格，avID: ${avID}`);
+                const blockId = updates[0].id;
+                // 批量更新完成后的后续处理
+                await handlePostBatchUpdateActions(avID, updates, blockId);
+            } else {
+                // 如果没有有效更新，拒绝所有Promise
+                updates.forEach(update => update.reject(new Error('Invalid keyName for update')));
+                console.warn(`⚠️  [批量更新单元格] 没有有效的键名，avID: ${avID}`);
+            }
+
+        } catch (error) {
+            console.error(`❌ [批量更新单元格] 更新失败，avID ${avID}:`, error);
+            // 错误时拒绝所有Promise
+            updates.forEach(update => update.reject(error));
+        }
+
+        // 每个avID处理完后添加延迟
+        if (groupedUpdates.size > 1) {
+            const batchDelay = getBatchDelay();
+            console.log(`⏱️ [批量处理] avID ${avID} 处理完成，等待 ${batchDelay}ms 后处理下一个avID...`);
+            await new Promise(resolve => setTimeout(resolve, batchDelay));
+        }
+    }
+
+    isProcessingQueue = false;
+    console.log(`✅ [队列处理] 队列处理完成，共处理了 ${totalItems} 个单元格更新`);
+}
+
+// 处理批量更新完成后的后续操作
+async function handlePostBatchUpdateActions(avID: string, updates: Array<any>, blockId: string) {
+    try {
+        // 1. 触发视图刷新
+        await refreshAttributeView(avID);
+
+        //有BUG会漏事件和重复事件
+        // // 2. 判断是否为滴答清单事件并处理
+        // await handleDidaListEvent(avID, updates, blockId);
+
+    } catch (error) {
+        console.warn(`⚠️ [后续处理] 批量更新后续处理出错，avID: ${avID}`, error);
+    }
+}
+
+// 刷新属性视图
+async function refreshAttributeView(avID: string) {
+    try {
+        refreshKanban();
+        console.log(`🔄 [视图刷新] 成功刷新视图，avID: ${avID}`);
+    } catch (error) {
+        console.warn(`⚠️ [视图刷新] 刷新视图失败，avID: ${avID}`, error);
+    }
+}
+
+// 处理滴答清单事件
+export async function handleDidaListEvent(avID: string, blockId: string) {
+    try {
+        // 检查是否为滴答清单数据库
+        const didaDbId = settingdata['cal-dida-db-id'];
+        if (!didaDbId || avID !== didaDbId) {
+            return; // 不是滴答清单数据库，无需处理
+        }
+        (window as any).Dida365Service?.handleSiyuanUpdate("force", blockId);
+
+    } catch (error) {
+        console.warn(`⚠️ [滴答清单] 处理滴答清单事件失败`, error);
+    }
+}
+
+// 处理单元格值的函数（从原来的processCellUpdate中提取）
+async function processCellValue(value: any, type: string, endtime?: string): Promise<any> {
+    let processedValue: any;
 
     switch (type) {
         case 'date':
             const { start, end } = await getDateTimestamps(value as string);
-            cellData = {
-                type: "date",
+            processedValue = {
                 date: {
                     content: start,
                     isNotEmpty: true,
@@ -787,27 +1035,34 @@ export async function updateAttrViewCell_pro(
                     isNotEmpty2: true,
                     hasEndDate: true,
                     isNotTime: false
-                },
-                id: newId
+                }
             };
             break;
 
         case 'select':
-            cellData = {
-                type: "select",
-                id: newId,
-                mSelect: value as ISelectOption[]
+            processedValue = {
+                mSelect: (value as ISelectOption[]).map(option => ({
+                    content: option.content,
+                    color: option.color
+                }))
+            };
+            break;
+
+        case 'mSelect':
+            processedValue = {
+                mSelect: (value as ISelectOption[]).map(option => ({
+                    content: option.content,
+                    color: option.color
+                }))
             };
             break;
 
         case 'checkbox':
-            cellData = {
-                type: "checkbox",
-                id: newId,
+            processedValue = {
                 checkbox: {
                     checked: value as boolean
-                },
-            }
+                }
+            };
             break;
 
         case 'relation':
@@ -822,25 +1077,24 @@ export async function updateAttrViewCell_pro(
             };
             const readyContents = transformBlockData(oldrelation.contents);
             if (action === 'add') {
-                if (oldrelation.ids.includes(blockID)) return;
-                oldrelation.ids.push(blockID);
-                readyContents.push({
-                    block: { content: content, id: blockID },
-                    isDetached: false,
-                    type: "block"
-                });
+                if (!oldrelation.ids.includes(blockID)) {
+                    oldrelation.ids.push(blockID);
+                    readyContents.push({
+                        block: { content: content, id: blockID },
+                        isDetached: false,
+                        type: "block"
+                    });
+                }
             } else if (action === 'remove') {
                 const index = oldrelation.ids.indexOf(blockID);
-                if (index === -1) return;
-                oldrelation.ids.splice(index, 1);
-                readyContents.splice(index, 1);
+                if (index !== -1) {
+                    oldrelation.ids.splice(index, 1);
+                    readyContents.splice(index, 1);
+                }
             } else {
-                console.error("action error");
-                return
+                throw new Error("Invalid relation action");
             }
-            cellData = {
-                type: "relation",
-                id: newId,
+            processedValue = {
                 relation: {
                     blockIDs: oldrelation.ids,
                     contents: readyContents
@@ -849,78 +1103,26 @@ export async function updateAttrViewCell_pro(
             break;
 
         case 'text':
-            cellData = {
-                type: "text",
-                id: newId,
+            processedValue = {
                 text: {
                     content: value as string
                 }
-            }
+            };
             break;
-    }
 
-    doOperations.push({
-        action: "updateAttrViewCell",
-        id: newId,
-        avID,
-        keyID,
-        rowID: id,
-        data: cellData
-    });
-
-
-    // 延时控制和重试机制
-    const delay = settingdata["api-transaction-delay"] || 500;
-    const maxRetries = settingdata["api-transaction-retry-count"] || 3;
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            // 确保与上次调用间隔足够
-            const now = Date.now();
-            const timeSinceLastCall = now - lastTransactionTime;
-            if (timeSinceLastCall < delay) {
-                const waitTime = delay - timeSinceLastCall;
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-            }
-
-            doOperations.push({
-                action: "doUpdateUpdated",
-                id: newId,
-                data: new Date(Date.now() + 8 * 60 * 60 * 1000)
-                    .toISOString()
-                    .replace(/[:\-]|(\.\d{3})|T/g, "")
-                    .slice(0, 14)
-            });
-            // 执行事务
-            await new Promise<void>((resolve, reject) => {
-                try {
-                    Protyle.prototype.transaction(doOperations, []);
-                    lastTransactionTime = Date.now();
-                    // 由于transaction没有返回Promise，我们添加一个短暂延时来确保操作完成
-                    setTimeout(() => resolve(), 100);
-                } catch (error) {
-                    reject(error);
+        case 'url':
+            processedValue = {
+                url: {
+                    content: value as string
                 }
-            });
+            };
+            break;
 
-            console.log(`API调用成功，尝试次数: ${attempt + 1}`);
-            return true;
-
-        } catch (error) {
-            console.warn(`API调用失败，尝试次数: ${attempt + 1}/${maxRetries}`, error);
-
-            if (attempt === maxRetries - 1) {
-                console.error('API调用最终失败，已达到最大重试次数', error);
-                return false;
-            }
-
-            // 重试前等待更长时间
-            const retryDelay = delay * (attempt + 2);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
+        default:
+            throw new Error(`Unsupported cell value type: ${type}`);
     }
 
-    return false;
+    return processedValue;
 }
 
 function transformBlockData(input: any[]): any[] {
@@ -933,9 +1135,6 @@ function transformBlockData(input: any[]): any[] {
         isDetached: false
     }));
 }
-
-
-
 
 export async function generateSiyuanID(more = false) {
     // 生成时间戳部分
@@ -979,7 +1178,7 @@ async function getDateTimestamps(dateStr: string): Promise<{ start: number, end:
 
     if (dateStr.includes('T')) {
         // 对于带时间的格式，end时间设为1小时后
-        const n = settingdata['cal-time'] ? settingdata['cal-time'] : 1;
+        const n = settingdata['cal-time'] ? settingdata['cal-time'] : 0;//默认为 0
         const ONE_HOUR_MS = n * 60 * 60 * 1000; // 1小时的毫秒数
         return {
             start: date.getTime(),
@@ -995,16 +1194,40 @@ async function getDateTimestamps(dateStr: string): Promise<{ start: number, end:
     }
 }
 
-export async function getFromApi2(path: string, params: Record<string, string> = {}, headers: Record<string, string> = {}): Promise<any> {
-    const baseUrl = 'http://api2.232397.xyz';//统计api
+import { PluginConfig } from "../savedata";
+import { refreshKanban } from "@/calendar/kanban";
 
-    // 构建查询字符串
-    const queryString = Object.keys(params).length > 0
-        ? '?' + new URLSearchParams(params).toString()
+// 传入 PluginConfig 实例
+export async function getFromApi2(
+    path: string,
+    params: Record<string, string> = {},
+    headers: Record<string, string> = {},
+    pluginConfig?: PluginConfig //
+): Promise<any> {
+    const baseUrl = 'http://api2.232397.xyz';
+    const today = new Date().toISOString().slice(0, 10);
+    const key = `getFromApi2_${path}`;
+
+    // 检查配置文件中的日期
+    if (pluginConfig) {
+        await pluginConfig.load();
+        const lastDate = pluginConfig.get<string>(key);
+        console.log(`api2ok`);
+        if (lastDate === today) {
+            // console.warn(`getFromApi2: 今日已请求，无需重复发送`);
+            return {
+                success: false,
+                error: '今日已请求，无需重复发送'
+            };
+        }
+    }
+
+    const safeParams = params ?? {};
+    const queryString = Object.keys(safeParams).length > 0
+        ? '?' + new URLSearchParams(safeParams).toString()
         : '';
 
     const url = `${baseUrl}${path}${queryString}`;
-    // console.log('请求的URL:', url);
     try {
         const response = await fetch(url, {
             method: 'GET',
@@ -1018,18 +1241,95 @@ export async function getFromApi2(path: string, params: Record<string, string> =
             console.warn(`api`);
         }
 
-        const data =await response.text();
-        // console.log('ok');
+        const data = await response.text();
+
+        // 请求成功后记录日期到配置
+        if (pluginConfig) {
+            pluginConfig.set(key, today);
+            await pluginConfig.save();
+        }
+
         return {
             success: true,
             data
         };
     } catch (error) {
-        // 捕获所有错误但不抛出
-        // console.warn(`请求 ${url} 出错:`, error);
         return {
             success: false,
             error: `请求出错: ${error instanceof Error ? error.message : String(error)}`
         };
     }
+}
+
+// **************************************** Status Bar ****************************************
+export async function showStatusMessage(message: string, timeout: number = 3000, id?: string) {
+    const statusContainer = document.getElementById('status');
+    if (!statusContainer) {
+        console.warn("Status bar container (#status) not found.");
+        return;
+    }
+
+    let customStatusDiv: HTMLDivElement | null = null;
+
+    if (id) {
+        customStatusDiv = document.querySelector(`.custom-st-status-message[data-id="${id}"]`);
+    }
+
+    if (customStatusDiv) {
+        // 如果存在相同 ID 的消息，则更新内容
+        customStatusDiv.textContent = message;
+    } else {
+        // 否则创建新的消息
+        customStatusDiv = document.createElement('div');
+        customStatusDiv.className = 'custom-st-status-message'; // 使用自定义的 class 名称
+        if (id) {
+            customStatusDiv.dataset.id = id; // 存储 ID
+        }
+        customStatusDiv.textContent = message;
+
+        // 添加点击事件监听器
+        customStatusDiv.addEventListener('click', () => {
+            customStatusDiv?.remove();
+        });
+
+        // 将新消息添加到状态栏的开头
+        statusContainer.prepend(customStatusDiv);
+    }
+
+
+    if (timeout > 0) {
+        setTimeout(() => {
+            customStatusDiv?.remove();
+        }, timeout);
+    }
+}
+
+// **************************************** AVManager Export ****************************************
+/**
+ * 导出 AVManager 实例供其他模块使用
+ */
+export { avManager };
+
+/**
+ * 添加属性视图键的便捷函数
+ * @param avID - 属性视图ID
+ * @param keyName - 键名称
+ * @param keyType - 键类型
+ * @param previousKeyName - 前一个键名称
+ */
+export async function addAttributeViewKey(
+    avID: string,
+    keyName: string,
+    keyType: string = 'text',
+    previousKeyName: string = ''
+): Promise<void> {
+    if (keyType == 'block') {
+        showMessage('主键键不支持添加，请自行修改主键名称为：事件', -1, 'error');
+        return;
+    }
+    return await avManager.addAttributeViewKey(avID, {
+        keyName,
+        keyType: keyType as any,
+        previousKeyName
+    });
 }

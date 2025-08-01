@@ -17,11 +17,12 @@ import solarLunar from 'solarlunar';
 import * as myF from './myF';
 import { showMessage } from 'siyuan';
 import { createFloatingCalendar } from './createFloatingCalendar';
-import { updateAttrViewCell_pro } from '@/api';
+import { updateAttrViewCell_pro } from '@/api/api';
 
 //审查ok
 import { getCategoryColor, lifelogColors } from '../lifelog/styles/colors';
 import { LifelogView } from './lifelog-view';
+import { createViewFilterMenu, initializeGroups } from './initializeGroups';
 //审查ok
 
 export let isFilter = true;
@@ -41,12 +42,13 @@ let lastSavedLifelogSlotDuration: string;
 export async function update_av_ids() {
     av_ids = await moduleInstances['M_calendar'].getAVreferenceid();
 }
-
 export async function init_viewValue(data: { viewId: string, viewName: string }) {
     viewId = data.viewId;
     viewName = data.viewName;
     // 将逗号分隔的视图ID解析为数组
     filterViewId = data.viewId ? data.viewId.split(',') : [];
+    // 初始化分组配置
+    initializeGroups();
 }
 
 
@@ -158,6 +160,7 @@ export async function run(
             minute: '2-digit',
             hour12: false
         },
+
         // selectable: true,
         // eventDurationEditable: true,
         eventDragStart: function (info) {
@@ -297,18 +300,11 @@ export async function run(
                 console.error('农历显示错误:', error);
             }
         },
-
-
         // 事件拖放处理
-
-
-
-
         eventDrop: async function (info) {
             // 检查是否是QQ日历事件
             if (info.event.extendedProps.source === 'qqcalendar') {
                 showDropTimeIndicator(info);
-
                 try {
                     const calendarId = settingdata['cal-qq-calendar-url'];
                     const success = await moduleInstances['M_calendar'].QQCalDAVClient.updateEvent(
@@ -458,229 +454,19 @@ export async function run(
             viewFilter: {
                 text: '视图选择',
                 click: async function () {
-                    const viewIDs = await myF.getViewId(av_ids)
-                    const button = calendarEl.querySelector('.fc-viewFilter-button');
-                    if (!button) return;
+                    // 初始化分组
+                    initializeGroups();
 
-                    // 创建下拉菜单
-                    // 修改创建菜单的代码
-                    const menu = document.createElement('div');
-                    menu.className = 'view-filter-menu';
-
-                    // 创建菜单头部（包含"全部视图"选项）
-                    const menuHeader = document.createElement('div');
-                    menuHeader.className = 'view-filter-header';
-
-                    // 添加全选/全不选选项
-                    menu.appendChild(menuHeader);
-
-                    // 创建可滚动的视图列表容器
-                    const menuContent = document.createElement('div');
-                    menuContent.className = 'view-filter-content';
-
-                    // 添加QQ日历选项
-                    if (1) {
-                        const qqItem = document.createElement('div');
-                        qqItem.className = 'view-filter-item';
-
-                        // 创建复选框
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.checked = filterViewId.includes('qqcalendar');
-                        checkbox.className = 'view-filter-checkbox';
-
-                        // 创建标签
-                        const label = document.createElement('span');
-                        label.textContent = 'QQ邮箱日历';
-                        label.className = 'view-filter-label';
-
-                        qqItem.appendChild(checkbox);
-                        qqItem.appendChild(label);
-
-                        qqItem.onclick = (e) => {
-                            e.stopPropagation();
-                            if (filterViewId.includes('qqcalendar')) {
-                                filterViewId = filterViewId.filter(id => id !== 'qqcalendar');
-                            } else {
-                                filterViewId.push('qqcalendar');
-                            }
-                            checkbox.checked = filterViewId.includes('qqcalendar');
-
-                            // 保存配置
-                            moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
-                            moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
-                            moduleInstances['M_calendar'].calConfig.save();
-                            refreshFiltersDisplay();
-                        };
-
-                        menuContent.appendChild(qqItem);
-                    }
-                    // 添加ICS订阅选项
-                    if (1) {
-                        const icsItem = document.createElement('div');
-                        icsItem.className = 'view-filter-item';
-
-                        // 创建复选框
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.checked = filterViewId.includes('icsSubscription');
-                        checkbox.className = 'view-filter-checkbox';
-
-                        // 创建标签
-                        const label = document.createElement('span');
-                        label.textContent = 'ICS订阅日历';
-                        label.className = 'view-filter-label';
-
-                        icsItem.appendChild(checkbox);
-                        icsItem.appendChild(label);
-
-                        icsItem.onclick = (e) => {
-                            e.stopPropagation();
-                            if (filterViewId.includes('icsSubscription')) {
-                                filterViewId = filterViewId.filter(id => id !== 'icsSubscription');
-                            } else {
-                                filterViewId.push('icsSubscription');
-                            }
-                            checkbox.checked = filterViewId.includes('icsSubscription');
-
-                            // 保存配置
-                            moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
-                            moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
-                            moduleInstances['M_calendar'].calConfig.save();
-                            refreshFiltersDisplay();
-                        };
-
-                        menuContent.appendChild(icsItem);
-                    }
-                    if (1) {
-                        const lifelogItem = document.createElement('div');
-                        lifelogItem.className = 'view-filter-item';
-
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        // 根据 filterViewId 动态设置选中状态
-                        checkbox.checked = filterViewId.includes('lifelog');
-                        checkbox.className = 'view-filter-checkbox';
-
-                        const label = document.createElement('span');
-                        label.textContent = 'Lifelog 记录';
-                        label.className = 'view-filter-label';
-
-                        lifelogItem.appendChild(checkbox);
-                        lifelogItem.appendChild(label);
-
-                        lifelogItem.onclick = (e) => {
-                            e.stopPropagation();
-                            if (filterViewId.includes('lifelog')) {
-                                filterViewId = filterViewId.filter(id => id !== 'lifelog');
-                                calendar.setOption('slotDuration', lastSavedLifelogSlotDuration);
-                            } else {
-                                filterViewId.push('lifelog');
-                                calendar.setOption('slotDuration', '00:10:00');
-                            }
-                            checkbox.checked = filterViewId.includes('lifelog');
-
-                            // 保存配置
-                            moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
-                            moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
-                            moduleInstances['M_calendar'].calConfig.save();
-                            refreshFiltersDisplay();
-                            calendar.refetchEvents();
-                        };
-
-
-                        menuContent.appendChild(lifelogItem);
-                    }
-
-                    // 添加视图选项
-                    viewIDs.forEach(view => {
-                        const item = document.createElement('div');
-                        item.className = 'view-filter-item';
-
-                        // 创建复选框
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.checked = filterViewId.includes(view.viewId);
-                        checkbox.className = 'view-filter-checkbox';
-
-                        // 创建标签
-                        const label = document.createElement('span');
-                        label.textContent = view.name;
-                        label.className = 'view-filter-label';
-
-                        item.appendChild(checkbox);
-                        item.appendChild(label);
-
-                        item.onclick = (e) => {
-                            // 防止冒泡到菜单外
-                            e.stopPropagation();
-
-                            // 切换当前视图的选中状态
-                            if (filterViewId.includes(view.viewId)) {
-                                filterViewId = filterViewId.filter(id => id !== view.viewId);
-                            } else {
-                                filterViewId.push(view.viewId);
-                            }
-
-                            // 更新复选框状态
-                            checkbox.checked = filterViewId.includes(view.viewId);
-
-                            // 保存配置并刷新
-                            moduleInstances['M_calendar'].calConfig.set("viewId", filterViewId.join(','));
-                            moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
-                            moduleInstances['M_calendar'].calConfig.save();
-                            refreshFiltersDisplay()
-                            // 不关闭菜单，允许多选
-                        };
-                        menuContent.appendChild(item);
-                    });
-                    menu.appendChild(menuContent);
-
-                    // 创建固定在底部的按钮容器
-                    const menuFooter = document.createElement('div');
-                    menuFooter.className = 'view-filter-footer';
-
-                    // 添加确定按钮
-                    const confirmBtn = document.createElement('button');
-                    confirmBtn.className = 'b3-button';
-                    confirmBtn.textContent = '确定';
-                    confirmBtn.onclick = () => {
-                        refreshKanban();
-                        menu.remove();
-                    };
-                    menuFooter.appendChild(confirmBtn);
-                    menu.appendChild(menuFooter);
-
-                    // 定位并显示菜单
-                    const rect = button.getBoundingClientRect();
-                    menu.style.top = rect.bottom + 'px';
-                    menu.style.left = rect.left + 'px';
-                    document.body.appendChild(menu);
-
-                    // 点击外部关闭菜单
-                    document.addEventListener('click', function closeMenu(e) {
-                        const target = e.target as Node;
-                        if (!menu.contains(target) && target !== button) {
-                            menu.remove();
-                            document.removeEventListener('click', closeMenu);
-                        }
-                    });
-
-                    // 辅助函数：更新筛选显示
-                    function refreshFiltersDisplay() {
-                        if (filterViewId.length === 0) {
-                            viewName = '全部视图';
-                        } else if (filterViewId.length === 1) {
-                            const selectedView = viewIDs.find(v => v.viewId === filterViewId[0]);
-                            if (selectedView) {
-                                viewName = selectedView.name;
-                            }
-                        } else {
-                            viewName = `已选择 ${filterViewId.length} 个视图`;
-                        }
-
-                        viewId = filterViewId.join(',');
-                    }
+                    // 调用新的视图筛选菜单函数
+                    await createViewFilterMenu(
+                        calendarEl,
+                        myF,
+                        calendar,
+                        filterViewId,
+                        (ids: string[]) => { filterViewId = ids; },
+                        refreshKanban,
+                        lastSavedLifelogSlotDuration
+                    );
                 },
             },
             // 添加 Lifelog 自定义按钮
@@ -1018,21 +804,8 @@ export async function run(
     update_thisCalendars();
     thisCalendars.push(calendar);
     console.log("thisCalendars", thisCalendars);
-    // Calendars_pro.push({Calendar:calendar,id:id});
     OUTcalendar = calendar;
     calendar.render();
-    // // 手动重新获取视图数据 - 只添加一次事件监听器
-    // const titleClickHandler = (e: MouseEvent) => {
-    //     const target = e.target as HTMLElement;
-    //     if (target.classList.contains('fc-toolbar-title')) {
-    //         refreshKanban();
-    //         console.log('refetchEvents：：AAA');
-    //     }
-    // };
-    // if (ishandrefetchEvents) {
-    //     document.addEventListener('click', titleClickHandler);
-    //     ishandrefetchEvents = false;
-    // }
     return calendar;
 }
 
@@ -1377,5 +1150,4 @@ declare global {
         calendar: typeof waytocal;
     }
 }
-window.calendar=waytocal;
-
+window.calendar = waytocal;

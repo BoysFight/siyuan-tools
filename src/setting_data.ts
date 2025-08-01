@@ -18,6 +18,7 @@ export const defaultSettings = {
     "cal-show-ref-event": true,//是否展示被引用的事件
     "cal-show-float-view": false,//是否展示悬浮窗
     "cal-auto-update-status": false,//根据块内子事件完成情况自动更新事件状态
+    "cal-auto-create-fields": true,//是否自动创建缺失的数据库字段
     "cal-week-start": "monday",
     "cal-show-right-click": false,
     "cal-drag-change": false,//是否允许拖拽改变事件时间
@@ -31,12 +32,31 @@ export const defaultSettings = {
     "cal-ics-subscribe-import-path": "",//暂时不处理
     "cal-ics-subscribe-import-note-id": null,
     "cal-ics-import-mode": "single-document",
+    "cal-ics-add-to-database": false, // 是否将ICS导入的块添加到数据库
+    "cal-ics-database-id": null, // ICS导入时使用的数据库ID
+    "cal-ics-custom-template": `### {{title}}
+
+开始时间： {{startTime}}
+结束时间： {{endTime}}
+地点： {{location}}
+状态： {{status}}
+标签： {{tags}}
+描述：{{description}}
+重复规则： {{recurrence}}`, // ICS导入块的自定义模板（只包含内容部分）
     //// qq邮箱子模块
     "cal-qq-code": "",
     "cal-qq-email": "",
     "cal-share": "",
     "cal-qq-calendar-url": "",
     "cal-qq-enable": false,
+    //// dida子模块
+    "cal-dida-enable": false,
+    "cal-dida-token": "",
+    "cal-dida-unfinished-list": "",
+    "cal-dida-finished-list": "",
+    "cal-dida-db-id": "", // 新增滴答清单同步数据库id
+    "cal-dida-sync-mode": "auto",
+    "cal-dida-sync-interval": 5, // 同步间隔时间（分钟）
     //// s3子模块
     "cal-s3-bucket": "",
     "cal-s3-accessKeyId": "",
@@ -86,20 +106,15 @@ export const defaultSettings = {
     //插件通用配置
     "PluginUsageStatistics": true, // 是否开启插件使用统计
     // 滴答清单配置
-    "cal-dida-enable": false,
-    "cal-dida-username": "", // 滴答清单用户名
-    "cal-dida-password": "", // 滴答清单密码
+    "cal-mydida-enable": false,
     "cal-dida-use-official-api": true, // 滴答清单官方API
-    "cal-dida-official-access-token": "", // 滴答清单API令牌
-    "cal-dida-official-client-id": "", // 滴答清单API client-id
-    "cal-dida-official-client-secret": "", // 滴答清单API client-secret
-    "cal-dida-sync-direction": "siyuan-to-dida", // 同步方向：siyuan-to-dida, dida-to-siyuan, both
-    "cal-dida-sync-interval": 30, // 同步间隔（分钟）
+    "cal-dida-official-access-token": "", // 滴答清单API access-token
     "docker-sync-auto-trigger-dida": false, // 是否自动同步
     "cal-dida-default-list-id": "", // 默认任务列表ID
     // API调用延时控制
     "api-transaction-delay": 500, // API调用延时（毫秒），默认500ms
     "api-transaction-retry-count": 3, // API调用重试次数，默认3次
+    "transaction-delay": 800, // 事务延迟时间（毫秒）
 };
 
 export function getSettings() {

@@ -1,7 +1,7 @@
 import steveTools, { frontEnd, settingdata } from "@/index";
 import { createEvents, EventAttributes } from 'ics';
 import { RRule } from 'rrule';
-import * as api from "@/api"
+import * as api from "@/api/api"
 import { showMessage, openTab, Dialog, getFrontend, confirm, Menu } from "siyuan";
 import * as ic from "@/icon"
 import "./event_style.scss";
@@ -12,7 +12,7 @@ let calendarpath2 = 'public/stevetools/calendar.ics';//订阅地址
 export const eventsPath = 'data/public/stevetools/events.json';
 export let linkToCalendar = '';
 import * as myF from "./myF";
-import { handleAddButtonClick, refreshKanban } from "./kanban";
+import { handleAddButtonClick, handleAddButtonClick_Independent, refreshKanban } from "./kanban";
 import { globalOpen2 } from "./myK";
 import { addquikaddButton, getCursorElement } from "./quickadd";
 import { M_caldata } from "./M_caldata";
@@ -24,12 +24,15 @@ import { ICSSubscription } from "./share/ics_discribe";
 import { Calendar } from "@fullcalendar/core";
 import { insertHtml, THIS } from "./insertHtml";
 import { ICSImporter } from "./ics/ics_siyuan";
+import { Dida365Service } from "./dida/dida_serv";
+import { AVManager } from "@/api/db_pro";
+import { IAVOperator } from "@/api/db_interface";
 
 
 
 // import { openNewWindowById } from "./myK";
 let allEvents: EventAttributes[] = [];
-
+export let DidaService: Dida365Service | null = null;
 let this_settingdata: any = {};
 let islisten = true;
 let front: "desktop" | "desktop-window" | "mobile" | "browser-desktop" | "browser-mobile";
@@ -45,7 +48,7 @@ export class M_calendar {
     private lastUpdateTime: number = 0;
     private readonly UPDATE_THROTTLE = 1000; // 1秒节流
 
-    public av_ids: any;
+    public av_ids: any = [];
     public calConfig: M_caldata;
     public alistPlugin: ics_alist;
     public s3Client: ics_s3;
@@ -53,7 +56,7 @@ export class M_calendar {
     public webdavClient: WebDAVSync;
     public qqFullCalendarEvents;
     public icsSubscription: ICSSubscription;
-
+    public calendarAV: IAVOperator;
 
     async init(settingdata) {
         this.plugin.addTab({
@@ -456,6 +459,16 @@ export class M_calendar {
             run("1");
         }
         //
+        //dida
+        if (this_settingdata["cal-dida-enable"] && this_settingdata["cal-dida-token"]) {
+            DidaService = new Dida365Service(this_settingdata["cal-dida-token"], this.plugin);
+        }
+        //dida
+        // const avManager = new AVManager();
+        // // console.log("avManager", avManager);
+        // // console.log("avidMMMM", settingdata["cal-db-id"]);
+        // this.calendarAV = avManager.createOperator(settingdata["cal-db-id"]);
+        // // console.log("avidMMMM22", settingdata["cal-av-id"]);
         //配置实现只在某一端上传ics
         const selectToPics = this_settingdata["SelectTOPics"];
         if (!selectToPics || selectToPics === frontEnd) {
@@ -500,7 +513,7 @@ export class M_calendar {
             langText: "创建日程（应用内弹窗）",
             hotkey: "",
             callback: async () => {
-                handleAddButtonClick();
+                handleAddButtonClick_Independent();
             },
         })
         this.plugin.addCommand({
@@ -516,13 +529,13 @@ export class M_calendar {
                 }
                 console.log("cursorElement", cursorElementId);
                 const blockId = cursorElementId
-                if(!blockId) {
+                if (!blockId) {
                     showMessage("请先选中一个块", 3000, "error");
                     return;
                 }
                 // console.log("pro", blockId);
                 // console.log("创建日程（光标所在块）", blockId);
-                handleAddButtonClick('', { isdirect: true, directid: blockId });
+                handleAddButtonClick_Independent('', { isdirect: true, directid: blockId });
             },
         })
         //注册斜杠
@@ -576,6 +589,14 @@ export class M_calendar {
                 }
             }
         });
+        // menu.addItem({
+        //     icon: "iconSTcal",
+        //     label: "测试",
+        //     click: async () => {
+        //         console.log("测试avmanager");
+        //         console.log("keys");
+        //     }
+        // });
         if (front == "browser-mobile" || front == "mobile") {
             menu.fullscreen();
         } else {
@@ -928,8 +949,8 @@ export class M_calendar {
             name: item.content?.split(' ')[0] || 'N/A'
         })).filter(item => item.id !== null);
 
-        steveTools.outlog(avIds); // 输出: [{id: '20241213113357-m9b143e', name: '...'}, ...]
-        steveTools.outlog("avIds", avIds);
+        console.log("avIds", avIds); // 输出: [{id: '20241213113357-m9b143e', name: '...'}, ...]
+
         return avIds;
     }
 
@@ -1308,7 +1329,7 @@ function transformEvents(inputEvents, isZQ: boolean = false) {
                 transformedEvents.push({
                     ...baseEvent,
                     end: timestampToArray(event.开始时间.end),
-                    status: event.状态.content === "完成" ? "CONFIRMED" : "TENTATIVE"
+                    status: event.状态?.content === "完成" ? "CONFIRMED" : "TENTATIVE"
                 });
             }
         });

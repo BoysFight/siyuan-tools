@@ -1,7 +1,8 @@
-import * as api from "@/api";
-import { fetchGet, fetchSyncPost, IWebSocketData, showMessage } from "siyuan";
-import steveTools, { settingdata } from "@/index";
+import * as api from "@/api/api";
+import { fetchSyncPost, showMessage } from "siyuan";
+import steveTools, { settingdata, moduleInstances } from "@/index";
 import { createDailynote } from "@frostime/siyuan-plugin-kits";
+import { getViewId, getViewValue } from "../myF";
 
 interface ICSEvent {
     uid: string;
@@ -13,11 +14,11 @@ interface ICSEvent {
     isAllDay: boolean;
     recurrence?: string;
     status: 'TENTATIVE' | 'CONFIRMED' | 'CANCELLED';
+    tags?: string[];
 }
 
 export class ICSImporter {
     private plugin: steveTools;
-    private processedEventUIDs: Set<string> = new Set();
     private settings: any;
     private topBarButton: any; // 添加对顶栏按钮的引用
 
@@ -186,7 +187,30 @@ export class ICSImporter {
             }
         }
 
-        return events;
+        // 按开始时间排序事件
+        return this.sortEventsByTime(events);
+    }
+
+    /**
+     * 按开始时间对事件进行排序
+     */
+    private sortEventsByTime(events: ICSEvent[]): ICSEvent[] {
+        return events.sort((a, b) => {
+            // 如果事件没有开始时间，排在最后
+            if (!a.startTime && !b.startTime) return 0;
+            if (!a.startTime) return 1;
+            if (!b.startTime) return -1;
+
+            // 按开始时间升序排序（最早的在前）
+            const timeA = a.startTime.getTime();
+            const timeB = b.startTime.getTime();
+            
+            if (timeA < timeB) return -1;
+            if (timeA > timeB) return 1;
+            
+            // 如果开始时间相同，按标题排序保证稳定性
+            return a.title.localeCompare(b.title);
+        });
     }
 
     /**
@@ -295,73 +319,106 @@ export class ICSImporter {
     }
 
     /**
+     * 简单的模板变量替换
+     */
+    private renderTemplate(template: string, data: any): string {
+        let result = template;
+
+        // 处理普通占位符 {{variable}}
+        result = result.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+            const value = data[key];
+            if (value === undefined || value === null || value === '') {
+                return '';
+            }
+            return String(value);
+        });
+
+        // 移除空行（包含只有空格的行）
+        result = result.replace(/^\s*[\r\n]/gm, '').replace(/\n\s*\n/g, '\n');
+
+        return result;
+    }
+
+    /**
      * 生成日程超级块内容
      */
     private generateEventBlock(event: ICSEvent): string {
-        const startTimeStr = this.formatDateTime(event.startTime, event.isAllDay);
+        // 获取自定义模板内容，如果没有则使用默认内容
+        const contentTemplate = this.settings['cal-ics-custom-template'] || this.getDefaultContentTemplate();
+        
+        // 准备模板数据
+        const startTimeStr = event.startTime ? this.formatDateTime(event.startTime, event.isAllDay) : '';
         const endTimeStr = event.endTime ? this.formatDateTime(event.endTime, event.isAllDay) : '';
-
-        let content = `{{{row\n`;
-        content += `### ${event.title}\n\n`;
-
-        // 添加时间信息
-        if (event.isAllDay) {
-            content += `日期： ${startTimeStr}\n\n`;
-        } else {
-            content += `开始时间： ${startTimeStr}  `;
-            if (endTimeStr) {
-                content += `结束时间： ${endTimeStr}\n\n`;
-            }
-        }
-
-        // 添加地点
-        if (event.location) {
-            content += `地点： ${event.location}\n\n`;
-        }
-
-        // 添加状态
+        
+        // 处理状态映射
         const statusMap = {
             'TENTATIVE': '待定',
             'CONFIRMED': '已确认',
             'CANCELLED': '已取消'
         };
-        if (event.status && statusMap[event.status]) {
-            content += `状态： ${statusMap[event.status]}\n\n`;
-        }
-
-        // 添加描述
-        if (event.description) {
-            // Regex to find URLs
+        const statusText = event.status && statusMap[event.status] ? statusMap[event.status] : '';
+        
+        // 处理描述中的URL链接
+        let processedDescription = event.description || '';
+        if (processedDescription) {
             const urlRegex = /(https?:\/\/[^\s]+)/g;
-            let processedDescription = event.description;
+            const matches: string[] = [];
             let match;
-            // Store matches to avoid modifying the string while iterating
-            const matches = [];
-            while ((match = urlRegex.exec(event.description)) !== null) {
+            while ((match = urlRegex.exec(event.description || '')) !== null) {
                 matches.push(match[0]);
             }
-            // Replace URLs with Markdown links
             matches.forEach(url => {
                 processedDescription = processedDescription.replace(url, `[${url}](${url})`);
             });
-            content += `描述：${processedDescription}\n\n`;
         }
+        
+        // 处理标签
+        const tagsText = event.tags && event.tags.length > 0 ? 
+            event.tags.map(tag => `#${tag}`).join(' ') : '';
+        
+        const templateData = {
+            title: event.title || '',
+            startTime: startTimeStr,
+            endTime: endTimeStr,
+            location: event.location || '',
+            description: processedDescription,
+            status: statusText,
+            recurrence: event.recurrence || '',
+            tags: tagsText
+        };
+        
+        // 渲染用户自定义的内容部分
+        const renderedContent = this.renderTemplate(contentTemplate, templateData);
+        
+        // 包装成超级块并添加必要的属性
+        return `{{{row
+${renderedContent}
+}}}
+{: custom-ics-id="${event.uid}" custom-ics-event="true"}
 
-        // 添加重复规则
-        if (event.recurrence) {
-            content += `重复规则： ${event.recurrence}\n\n`;
-        }
+{: custom-ics-id="null" }
+`;
+    }
 
-        // 添加唯一标识符（隐藏在属性中）
-        content += `}}}\n{: custom-ics-id="${event.uid}" custom-ics-event="true"}`;
+    /**
+     * 获取默认模板内容（不包含超级块包装）
+     */
+    private getDefaultContentTemplate(): string {
+        return `### {{title}}
 
-        return content;
+开始时间： {{startTime}}
+结束时间： {{endTime}}
+地点： {{location}}
+状态： {{status}}
+标签： {{tags}}
+描述：{{description}}
+重复规则： {{recurrence}}`;
     }
 
     /**
      * 检查文档中是否已存在指定UID的日程
      */
-    private async checkEventExists(documentId: string, uid: string): Promise<boolean> {
+    private async checkEventExists(_documentId: string, uid: string): Promise<boolean> {
         try {
             // const sqlStr = `
             //     SELECT id FROM blocks 
@@ -391,7 +448,7 @@ export class ICSImporter {
             const sqlStr = `
                 SELECT ial FROM blocks 
                 WHERE ial LIKE '%custom-ics-event="true"%' 
-                  AND ial LIKE '%custom-ics-id=%'
+                  AND ial LIKE '%custom-ics-id=%' limit 9999999
             `;
             const results: { ial: string }[] = await api.sql(sqlStr);
 
@@ -452,7 +509,7 @@ export class ICSImporter {
                 // 更换图标为历史图标，表示有新内容
                 this.updateTopBarIcon("iconHistory");
 
-                showMessage(`检测到 ${newEventCount} 个新的ICS日程。请点击顶栏按钮手动导入。`, 7000, 'info');
+                api.showStatusMessage(`检测到 ${newEventCount} 个新的ICS日程。请点击顶栏按钮手动导入。`, 7000, 'info');
 
             } else {
                 console.log('未检测到新的ICS日程。');
@@ -531,6 +588,22 @@ export class ICSImporter {
                     continue;
                 }
 
+                // https://github.com/loonghfut/siyuan-steve-tools/issues/73
+                // 识别标签
+                if (event.description && event.description.includes('#')) {
+                    // 匹配所有 #标签，支持中文、英文、数字
+                    const tagMatches = event.description.match(/#([\u4e00-\u9fa5\w]+)/g);
+                    if (tagMatches) {
+                        // 去掉#号，只保留标签内容
+                        event.tags = tagMatches.map(tag => tag.replace(/^#/, ''));
+                        // 去除原文中的标签和其后紧挨的逗号（英文和中文逗号）
+                        event.description = event.description.replace(/#([\u4e00-\u9fa5\w]+)[,，]?/g, '').trim();
+                    } else {
+                        event.tags = [];
+                    }
+                }
+                console.log(`处理事件:taggggg `, event.tags);
+
                 const eventYear = event.startTime.getFullYear();
                 const eventMonth = (event.startTime.getMonth() + 1).toString().padStart(2, '0');
                 const eventDay = event.startTime.getDate().toString().padStart(2, '0');
@@ -571,7 +644,25 @@ export class ICSImporter {
 
                 const blockContent = this.generateEventBlock(event);
                 try {
-                    await api.prependBlock("markdown", blockContent, dailyNoteId);
+                    console.log(`将事件反馈`, blockContent);
+                    const result = await api.appendBlock("markdown", blockContent, dailyNoteId);
+
+                    // 如果插入成功且启用了数据库功能，添加到数据库
+                    if (result && this.settings['cal-ics-add-to-database']) {
+                        // 从返回结果中获取新创建的块ID
+                        let newBlockId = null;
+                        if (Array.isArray(result) && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
+                            newBlockId = result[0].doOperations[0].id;
+                        }
+
+                        if (newBlockId) {
+                            await this.addBlockToDatabase(newBlockId, event);
+                            console.log(`已将ICS事件 "${event.title}" 添加到数据库 (日记模式)`);
+                        } else {
+                            console.warn(`无法获取新创建块的ID，跳过添加到数据库 (日记模式): ${event.title}`);
+                        }
+                    }
+
                     importedCount++;
                 } catch (e) {
                     const errorMessage = e instanceof Error ? e.message : String(e);
@@ -633,11 +724,44 @@ export class ICSImporter {
                     continue;
                 }
 
+                // https://github.com/loonghfut/siyuan-steve-tools/issues/73
+                // 识别标签
+                if (event.description && event.description.includes('#')) {
+                    // 匹配所有 #标签，支持中文、英文、数字
+                    const tagMatches = event.description.match(/#([\u4e00-\u9fa5\w]+)/g);
+                    if (tagMatches) {
+                        // 去掉#号，只保留标签内容
+                        event.tags = tagMatches.map(tag => tag.replace(/^#/, ''));
+                        // 去除原文中的标签和其后紧挨的逗号（英文和中文逗号）
+                        event.description = event.description.replace(/#([\u4e00-\u9fa5\w]+)[,，]?/g, '').trim();
+                    } else {
+                        event.tags = [];
+                    }
+                }
+                console.log(`处理事件:taggggg `, event.tags);
+
                 // 生成超级块内容
                 const blockContent = this.generateEventBlock(event);
-                // console.log(`生成超级块内容: ${blockContent}`);
+                
                 // 插入到文档
-                await api.prependBlock("markdown", blockContent, documentId);
+                const result = await api.appendBlock("markdown", blockContent, documentId);
+// console.log(`生成超级块内容: ${blockContent}`,result);
+                // 如果插入成功且启用了数据库功能，添加到数据库
+                if (result && this.settings['cal-ics-add-to-database']) {
+                    // 从返回结果中获取新创建的块ID
+                    let newBlockId = null;
+                    if (Array.isArray(result) && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
+                        newBlockId = result[0].doOperations[0].id;
+                    }
+
+                    if (newBlockId) {
+                        await this.addBlockToDatabase(newBlockId, event);
+                        console.log(`已将ICS事件 "${event.title}" 添加到数据库`);
+                    } else {
+                        console.warn(`无法获取新创建块的ID，跳过添加到数据库: ${event.title}`);
+                    }
+                }
+
                 importedCount++;
 
                 // 添加小延时避免请求过快
@@ -667,5 +791,169 @@ export class ICSImporter {
         }
 
         await this.importEventsToDocument(icsUrl, documentId);
+    }
+
+    /**
+     * 将块添加到指定数据库
+     */
+    private async addBlockToDatabase(blockId: string, event: ICSEvent): Promise<void> {
+        // 检查是否启用数据库功能
+        if (!this.settings['cal-ics-add-to-database']) {
+            return;
+        }
+
+        const databaseId = this.settings['cal-ics-database-id'];
+        if (!databaseId) {
+            console.warn('ICS导入：未设置数据库ID，跳过添加到数据库');
+            return;
+        }
+
+        try {
+            // 添加块到数据库
+            await api.addBlockToDatabase_pro(blockId, databaseId);
+            console.log(`成功将块 ${blockId} 添加到数据库 ${databaseId}`);
+
+            // 添加小延时确保块已添加到数据库
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // 获取数据库的视图信息以便更新属性
+            try {
+                const viewValue = await this.getViewValueForDatabase(databaseId);
+                if (viewValue) {
+                    await this.updateDatabaseAttributes(blockId, databaseId, event, viewValue);
+                }
+            } catch (error) {
+                console.warn('更新数据库属性时出错:', error);
+                // 不抛出错误，因为块已经成功添加到数据库
+            }
+
+        } catch (error) {
+            console.error(`添加块到数据库失败 (blockId: ${blockId}, databaseId: ${databaseId}):`, error);
+            // 不抛出错误，避免影响导入流程
+        }
+    }
+
+    /**
+     * 获取数据库的视图信息
+     */
+    private async getViewValueForDatabase(databaseId: string): Promise<any> {
+        try {
+            // 获取模块实例
+            const calendarModule = moduleInstances?.['M_calendar'];
+            if (!calendarModule) {
+                console.warn('无法获取日历模块实例');
+                return null;
+            }
+
+            // 获取可用的数据库信息
+            const avIds = await calendarModule.getAVreferenceid_pro();
+            if (!avIds || avIds.length === 0) {
+                console.warn('无法获取数据库引用ID');
+                return null;
+            }
+
+            // 查找对应的数据库
+            const targetDb = avIds.find(db => db.id === databaseId);
+            if (!targetDb) {
+                console.warn(`未找到数据库 ${databaseId}`);
+                return null;
+            }
+
+            // 获取视图ID
+            const avIdStrings = avIds.map(db => db.id);
+            const viewIDs = await getViewId(avIdStrings);
+            if (!viewIDs || viewIDs.length === 0) {
+                console.warn('无法获取视图ID');
+                return null;
+            }
+
+            // 获取视图值
+            const viewValue = await getViewValue(viewIDs);
+            return viewValue;
+
+        } catch (error) {
+            console.error('获取数据库视图信息失败:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 从视图数据中获取字段ID（简化版本）
+     */
+    private async getKeyIDfromViewValue(viewValue: any, keyName: string, databaseId: string): Promise<string | undefined> {
+        try {
+            if (!viewValue || !Array.isArray(viewValue)) {
+                return undefined;
+            }
+
+            // 查找指定数据库的视图数据
+            for (const view of viewValue) {
+                if (view?.from?.rootid === databaseId && view?.data) {
+                    for (const item of view.data) {
+                        if (item && item[keyName] && item[keyName].keyID) {
+                            return item[keyName].keyID;
+                        }
+                    }
+                }
+            }
+
+            return undefined;
+        } catch (error) {
+            console.error(`获取字段ID失败 (keyName: ${keyName}):`, error);
+            return undefined;
+        }
+    }
+
+    /**
+     * 更新数据库中块的属性
+     */
+    private async updateDatabaseAttributes(blockId: string, databaseId: string, event: ICSEvent, viewValue: any): Promise<void> {
+        try {
+            console.log(`更新数据库属性ICSICS`, event);
+
+            // 批量更新：收集所有需要更新的字段
+            const updatePromises: Promise<any>[] = [];
+
+            // 更新标题
+            const titleKeyID = await this.getKeyIDfromViewValue(viewValue, '事件', databaseId);
+            if (titleKeyID && event.title) {
+                updatePromises.push(api.updateAttrViewCell_pro(blockId, databaseId, titleKeyID, event.title, "text"));
+            }
+
+            // 更新开始时间和结束时间
+            const timeKeyID = await this.getKeyIDfromViewValue(viewValue, '开始时间', databaseId);
+            if (timeKeyID && event.startTime) {
+                const dateStr = event.startTime instanceof Date ? event.startTime.toISOString() : event.startTime;
+                const endStr = event.endTime instanceof Date ? event.endTime.toISOString() : event.endTime;
+                updatePromises.push(api.updateAttrViewCell_pro(blockId, databaseId, timeKeyID, dateStr, "date", endStr));
+            }
+
+            // 更新分类为"ICS导入"
+            const categoryKeyID = await this.getKeyIDfromViewValue(viewValue, '分类', databaseId);
+            if (categoryKeyID) {
+                const categoryData = [{ content: "ICS导入" }];
+                updatePromises.push(api.updateAttrViewCell_pro(blockId, databaseId, categoryKeyID, categoryData, "select"));
+            }
+
+            // 更新标签
+            const tagKeyID = await this.getKeyIDfromViewValue(viewValue, '标签', databaseId);
+            if (tagKeyID && event.tags && event.tags.length > 0) {
+                const tagData = event.tags.map(tag => ({ content: tag }));
+                updatePromises.push(api.updateAttrViewCell_pro(blockId, databaseId, tagKeyID, tagData, "mSelect"));
+            }
+
+            // 更新描述
+            const noteKeyID = await this.getKeyIDfromViewValue(viewValue, '描述', databaseId);
+            if (noteKeyID && event.description) {
+                updatePromises.push(api.updateAttrViewCell_pro(blockId, databaseId, noteKeyID, event.description, "text"));
+            }
+
+            // 等待所有更新完成
+            await Promise.all(updatePromises);
+
+        } catch (error) {
+            console.error('更新数据库属性失败:', error);
+            // 不抛出错误，避免影响导入流程
+        }
     }
 }

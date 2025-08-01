@@ -20,6 +20,16 @@ $priority-color-low-background: var(--b3-card-success-background);
 $priority-color-medium-background: var(--b3-card-info-background);
 $priority-color-high-background: var(--b3-card-error-background);
 
+.custom-st-status-message {
+    color: var(--b3-theme-on-surface);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    padding-left: 5px;
+    font-size: 12px;
+}
+
+
 div.fc-view-harness.fc-view-harness-active>div>table>thead>tr>th {
     border: none !important;
 }
@@ -459,26 +469,7 @@ div.fc-view-harness.fc-view-harness-active>div>table>thead>tr>th {
 }
 
 
-//视图选择界面
-.view-filter-menu {
-    position: absolute;
-    z-index: 1000;
-    background-color: $background-color ;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    color: $text-color;
-    border: 1px solid $border-color;
-}
 
-.view-filter-item {
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-
-    &:hover {
-        background-color: $hover-background-color;
-    }
-}
 
 //my看板
 .kanban-board {

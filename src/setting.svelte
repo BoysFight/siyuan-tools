@@ -3,8 +3,10 @@
     import { showMessage } from "siyuan";
     import { onMount } from "svelte";
     import SettingPanel from "@/libs/components/setting-panel.svelte";
-    import * as myapi from "@/api";
-    import { getSettings } from "./calsettings";
+    import * as myapi from "@/api/api";
+    import { getSettings } from "./setting_data";
+    import { DidaService } from "./calendar/module-calendar";
+    import { convertProjectsToRecord } from "./calendar/dida/dida_interface";
 
     export let plugin;
     export let myfile;
@@ -34,6 +36,7 @@
                 "qq邮箱日历",
                 "订阅日历",
                 "视图设置",
+                "滴答清单",
             ],
             activeSubGroup: "基础设置",
             items: [
@@ -83,6 +86,7 @@
                             ) {
                                 console.warn(
                                     "Calendar module or av_ids not initialized",
+                                    moduleInstances["M_calendar"],
                                 );
                                 return { "": "无可用数据库" };
                             }
@@ -211,6 +215,14 @@
                         "启用后会根据块内子事件完成情况自动更新事件状态",
                     key: "cal-auto-update-status",
                     value: settings["cal-auto-update-status"],
+                },
+                {
+                    type: "checkbox",
+                    title: "自动创建缺失的数据库字段",
+                    description:
+                        "启用后会自动创建日程管理所需的数据库字段，禁用后需要手动创建字段",
+                    key: "cal-auto-create-fields",
+                    value: settings["cal-auto-create-fields"],
                 },
                 {
                     type: "checkbox",
@@ -437,14 +449,85 @@
                 },
                 {
                     type: "select",
-                    title: "ics订阅导入的日记本",
-                    description: "选择ics订阅导入的日记本",
+                    title: "ics订阅导入模式",
+                    description: "选择ics订阅导入模式",
                     key: "cal-ics-import-mode",
                     value: settings["cal-ics-import-mode"],
-                    options:{
+                    options: {
                         "single-document": "导入到当日日记本",
                         "daily-notes": "根据事件日期导入",
-                    }
+                    },
+                },
+                {
+                    type: "checkbox",
+                    title: "添加到数据库",
+                    description:
+                        "启用后，ICS导入的日程块会自动添加到指定的数据库中",
+                    key: "cal-ics-add-to-database",
+                    value: settings["cal-ics-add-to-database"],
+                },
+                {
+                    type: "select",
+                    title: "ICS导入数据库",
+                    description: "选择ICS导入时要添加到的数据库",
+                    key: "cal-ics-database-id",
+                    value: settings["cal-ics-database-id"],
+                    options: (() => {
+                        try {
+                            if (
+                                !moduleInstances["M_calendar"] ||
+                                !moduleInstances["M_calendar"].av_ids
+                            ) {
+                                console.warn(
+                                    "Calendar module or av_ids not initialized",
+                                );
+                                return { "": "无可用数据库" };
+                            }
+                            const ids = moduleInstances["M_calendar"].av_ids;
+                            if (!Array.isArray(ids) || ids.length === 0) {
+                                return {
+                                    "": "无可用数据库请先导入日程周期模板",
+                                };
+                            }
+                            return Object.fromEntries(
+                                ids
+                                    .map((database) => {
+                                        if (!database?.id || !database?.name) {
+                                            console.warn(
+                                                "Invalid database entry:",
+                                                database,
+                                            );
+                                            return ["", "无效数据库"];
+                                        }
+                                        return [database.id, database.name];
+                                    })
+                                    .filter((entry) => entry[0] !== ""),
+                            );
+                        } catch (error) {
+                            console.error(
+                                "Error processing ICS database options:",
+                                error,
+                            );
+                            return { "": "加载数据库出错" };
+                        }
+                    })(),
+                },
+                {
+                    type: "textarea",
+                    title: "ICS导入模板",
+                    description: `自定义ICS导入块的内容格式。支持的占位符：
+{{title}} - 事件标题
+{{startTime}} - 开始时间  
+{{endTime}} - 结束时间
+{{location}} - 地点
+{{description}} - 描述
+{{status}} - 状态
+{{recurrence}} - 重复规则
+{{tags}} - 标签
+`,
+                    key: "cal-ics-custom-template",
+                    direction: "row",
+                    value: settings["cal-ics-custom-template"],
                 },
                 {
                     type: "textinput",
@@ -521,6 +604,60 @@
                         kanban: "Kanban",
                         yearkanban: "YearKanban",
                     },
+                },
+                {
+                    type: "checkbox",
+                    title: "启用滴答清单同步",
+                    description: "启用后可以同步滴答清单的任务",
+                    key: "cal-dida-enable",
+                    value: settings["cal-dida-enable"],
+                },
+                {
+                    type: "textinput",
+                    title: "滴答清单token",
+                    description: `滴答清单的API token。<a href="https://dida365.com/webapp/#q/all/tasks?modalType=settings" target="_blank">获取</a>API口令 `,
+                    key: "cal-dida-token",
+                    value: settings["cal-dida-token"],
+                },
+                {
+                    type: "select",
+                    title: "设置要同步的清单",
+                    description: "选择滴答清单的清单",
+                    key: "cal-dida-unfinished-list",
+                    value: { "": "加载中" },
+                },
+                // {
+                //     type: "select",
+                //     title: "设置已完成清单",
+                //     description: "选择滴答清单的已完成清单id",
+                //     key: "cal-dida-finished-list",
+                //     value: { "": "加载中" },
+                // },
+                {
+                    type: "textinput",
+                    title: "滴答清单同步数据库id",
+                    description: "滴答清单同步的数据库id",
+                    key: "cal-dida-db-id",
+                    value: settings["cal-dida-db-id"],
+                },
+                {
+                    type: "select",
+                    title: "滴答清单同步模式",
+                    description: "选择滴答清单同步的模式",
+                    key: "cal-dida-sync-mode",
+                    value: settings["cal-dida-sync-mode"],
+                    options: {
+                        auto: "自动同步",
+                        manual: "手动同步",
+                        all: "自动+手动同步",
+                    },
+                },
+                {
+                    type: "number",
+                    title: "自动同步间隔",
+                    description: "滴答清单自动同步的时间间隔(单位：分钟)",
+                    key: "cal-dida-sync-interval",
+                    value: settings["cal-dida-sync-interval"],
                 },
             ],
         },
@@ -721,6 +858,19 @@
                         "是否允许插件匿名统计使用情况，仅仅为了统计插件的使用人数，以决策之后的开发方向（只发起了一个get请求[细节见插件源码]，不会发送任何隐私数据）",
                     key: "PluginUsageStatistics",
                     value: settings["PluginUsageStatistics"], // 默认为true
+                },
+                {
+                    type: "slider",
+                    title: "数据库操作延迟时间(建议调为1100左右)",
+                    description:
+                        "数据库批量处理的延迟时间，单位：毫秒。较小的值会处理得更快速但更容易出错",
+                    key: "transaction-delay",
+                    value: settings["transaction-delay"],
+                    slider: {
+                        min: 500,
+                        max: 5000,
+                        step: 100,
+                    },
                 },
                 {
                     type: "button",
@@ -991,6 +1141,37 @@
                     console.error("Error loading QQ calendars:", error);
                 }
             });
+            // Load Dida lists asynchronously
+            Promise.resolve().then(async () => {
+                try {
+                    const projects = await DidaService.getAllProjects();
+                    const projectRecords = convertProjectsToRecord(projects);
+
+                    if (projectRecords) {
+                        // Update unfinished list options
+                        const unfinishedListItem = groups[0].items.find(
+                            (item) => item.key === "cal-dida-unfinished-list",
+                        );
+                        if (unfinishedListItem) {
+                            unfinishedListItem.options = projectRecords;
+                        }
+
+                        // Update finished list options
+                        const finishedListItem = groups[0].items.find(
+                            (item) => item.key === "cal-dida-finished-list",
+                        );
+                        if (finishedListItem) {
+                            finishedListItem.options = projectRecords;
+                        }
+
+                        updateGroupItems();
+                    } else {
+                        console.warn("No Dida projects found.");
+                    }
+                } catch (error) {
+                    console.error("Error loading Dida lists:", error);
+                }
+            });
             updateGroupItems();
             await saveSettings();
         } else {
@@ -1015,12 +1196,13 @@
     const subGroupItemCounts = {
         日程管理: {
             基础设置: 7,
-            高级设置: 8,
+            高级设置: 9,
             ics设置: 7,
             ics分享: 9,
             qq邮箱日历: 4,
-            订阅日历: 5,
+            订阅日历: 8,
             视图设置: 8,
+            滴答清单: 6,
             // 不限制
         },
         画板: {

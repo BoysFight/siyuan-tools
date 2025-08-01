@@ -21,7 +21,7 @@ import {
     // fetchPost
 } from "siyuan";
 import "@/index.scss";
-import * as api from "@/api";
+import * as api from "@/api/api";
 // import { ModuleA } from "./libs/moduleA";
 import * as ic from "@/icon"
 import { M_calendar } from "./calendar/module-calendar";
@@ -32,7 +32,8 @@ import { M_imageCompression } from "./ImageCompression/module-imageCompression";
 import { M_lifelog } from "./lifelog/module-lifelog";
 
 // import * as api from "@/api"
-import SettingExample from "@/setting-example.svelte";
+import SettingExample from "@/setting.svelte";
+import { PluginConfig } from "./savedata";
 
 export let frontEnd;
 
@@ -50,7 +51,7 @@ export let moduleInstances: {
 } = {};
 
 export default class steveTools extends Plugin {
-
+    private pluginConfig: PluginConfig;
     // private modules: any[];
     private loadModule(ModuleClass: any, moduleName: string) {
         const moduleInstance = new ModuleClass(this);//解释：new ModuleClass(this)相当于new ModuleClass(steveTools)
@@ -62,7 +63,7 @@ export default class steveTools extends Plugin {
             console.log("日历模块加载");
             if (settingdata["PluginUsageStatistics"]) {
                 // console.log("统计");
-                api.getFromApi2("/STcal");
+                api.getFromApi2("/STcal",null, null, this.pluginConfig);
             }
         }
         // if (data["sync-enable"] == true) {
@@ -83,7 +84,7 @@ export default class steveTools extends Plugin {
             console.log("画板模块加载");
             if (settingdata["PluginUsageStatistics"]) {
                 // console.log("统计");
-                api.getFromApi2("/SThandwriting");
+                api.getFromApi2("/SThandwriting", null, null, this.pluginConfig);
             }
         }
 
@@ -97,7 +98,7 @@ export default class steveTools extends Plugin {
     // private isMobile: boolean;
     // private settingUtils: SettingUtils;
     async onload() {
-
+        this.pluginConfig = new PluginConfig(this.name, "M_steveTools");
         frontEnd = window.siyuan.config.system.os;
         this.addIcons(`
     <symbol id="iconST" viewBox="0 0 512 512">
@@ -137,7 +138,7 @@ export default class steveTools extends Plugin {
         setdialog = new Dialog({
             title: "steveTools设置",
             content: `<div id="SettingPanel" style="height: 100%;"></div>`,
-            width: "800px",
+            width: "900px",
             destroyCallback: (options) => {
                 console.log("destroyCallback", options);
                 //You'd better destroy the component when the dialog is closed
@@ -161,9 +162,9 @@ export default class steveTools extends Plugin {
         }
     }
     static outlog(mag: any, mag2?: any, mag3?: any, mag4?: any, mag5?: any) {
-        if (islog) {
-            console.log(mag, mag2, mag3, mag4, mag5);
-            console.trace(); // 输出堆栈跟踪
-        }
+        // if (islog) {
+        //     console.log(mag, mag2, mag3, mag4, mag5);
+        //     console.trace(); // 输出堆栈跟踪
+        // }
     }
 }

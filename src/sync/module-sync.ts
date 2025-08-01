@@ -1,5 +1,5 @@
 import steveTools from "@/index";
-import * as api from "@/api"
+import * as api from "@/api/api"
 import { showMessage } from "siyuan";
 import { moduleInstances } from '@/index';
 import { M_didaSync } from './module-dida-sync';

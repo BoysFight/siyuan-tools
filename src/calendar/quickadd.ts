@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { IProtyle, showMessage, subMenu } from 'siyuan';
 import { allKBEvents, handleAddButtonClick } from './kanban';
-import { updateAttrViewCell_pro } from '@/api';
+import { updateAttrViewCell_pro } from '@/api/api';
 import { findEventByPublicId, run_getsubevents } from './myK';
 import { api } from '@frostime/siyuan-plugin-kits';
 
@@ -362,7 +362,6 @@ function mapDayCharToJsDay(dayChar: string): number {
 }
 
 function parseDateFromString(dateMatch: RegExpMatchArray | null, initialDate: dayjs.Dayjs): dayjs.Dayjs {
-    // ...existing code...
     let targetDate = initialDate;
     if (!dateMatch) return targetDate;
 
@@ -632,7 +631,10 @@ export function runblockdata_for_time(content: string): string | null {
     for (const match of timeMatchesIterator) {
         lastTimeMatch = match;
     }
-
+    // 如果既没有日期匹配也没有时间匹配，返回 null
+    if (!dateMatch && !lastTimeMatch) {
+        return null;
+    }
     let targetDate = dayjs();
 
     if (dateMatch) {
