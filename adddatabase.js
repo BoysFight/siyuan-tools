@@ -67,7 +67,7 @@
                     getColValue: (keyID, rowID, cellID, avID) => {
                         const today = new Date();
                         today.setHours(0, 0, 0, 0);
-                        return {"date": {"content": today.getTime(), "content2": 0, "isNotEmpty": true, "isNotEmpty2": false, "isNotTime": false, "hasEndDate": false}};
+                        return {"date": {"content": today.getTime(), "content2": today.getTime(), "isNotEmpty": true, "isNotEmpty2": true, "isNotTime": false, "hasEndDate": true}};
                     },
                 },
                 {
@@ -113,7 +113,8 @@
                                         blockIdsToAdd.add(refIds[index]);
                                     }
                                 });
-                            } else {
+                            }
+                            {
                                 // 递归获取父块引用
                                 const checkParentBlockRefs = async (block) => {
                                     if (!block?.parent_id) return null;
@@ -366,13 +367,13 @@
         if (focusedProtyle) {
             return focusedProtyle;
         }
-        
+
         // 其次获取活动窗口的编辑器
         const activeWndProtyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)');
         if (activeWndProtyle) {
             return activeWndProtyle;
         }
-        
+
         // 最后获取任意可见编辑器
         return document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
     }
@@ -474,6 +475,9 @@
         let blocks = customBlocks;
         if (!blocks) {
             const protyle = getCurrentProtyle();
+            // 获取光标所在块的 ID
+            let cursorElement = getCursorElement();
+
             if (!protyle) {
                 console.warn('未找到可用的编辑器窗口');
                 showMessage('请先打开一个文档', true, 3000);
@@ -490,7 +494,18 @@
                 }];
             } else {
                 // 添加普通块到数据库
-                blocks = protyle?.querySelectorAll('.protyle-wysiwyg--select') || document.querySelectorAll('.protyle-wysiwyg--select');
+                let cursorElementId = cursorElement?.closest('[data-type]')?.getAttribute('data-node-id');
+
+                // 如果光标在列表项中，获取列表项的 ID
+                if (cursorElementId && cursorElement?.closest('.li')) {
+                    cursorElementId = cursorElement.closest('.li').getAttribute('data-node-id');
+                } else {
+                    showMessage('请先将光标定位到一个列表块', true, 3000);
+                    return;
+                }
+
+                // 创建一个包含当前块的数组
+                blocks = [{ dataset: { nodeId: cursorElementId } }];
             }
         }
         // 绑定块
@@ -543,7 +558,6 @@
             const blockIds = [...blocks].map(block => block.dataset.nodeId);
             if(isEnableCustomAttrsInSelectedBlock) await setBlocksAttrs(blockIds, customAttrs);
         }
-        showMessage(`数据添加成功`, false, 3000);
     }
     // 通过块id获取数据库id
     async function getAvIdByAvBlockId(blockId) {
