@@ -517,7 +517,7 @@
                     title: "ICS导入模板",
                     description: `自定义ICS导入块的内容格式。支持的占位符：
 {{title}} - 事件标题
-{{startTime}} - 开始时间  
+{{startTime}} - 开始时间
 {{endTime}} - 结束时间
 {{location}} - 地点
 {{description}} - 描述
@@ -920,28 +920,14 @@
             ],
         },
         {
-        name: "滴答清单",
+        name: "我的滴答清单",
         items: [
             {
                 type: "checkbox",
                 title: "启用滴答清单同步",
                 description: "启用后开启将思源笔记的任务同步到滴答清单功能",
-                key: "cal-dida-enable",
-                value: settings["cal-dida-enable"],
-            },
-            {
-                type: "textinput",
-                title: "滴答清单用户名",
-                description: "滴答清单账号的用户名或邮箱",
-                key: "cal-dida-username",
-                value: settings["cal-dida-username"],
-            },
-            {
-                type: "textinput",
-                title: "滴答清单密码",
-                description: "滴答清单账号的密码",
-                key: "cal-dida-password",
-                value: settings["cal-dida-password"],
+                key: "cal-mydida-enable",
+                value: settings["cal-mydida-enable"],
             },
             {
                 type: "textinput",
@@ -949,25 +935,6 @@
                 description: "滴答清单的API访问令牌（可选，用于高级功能）",
                 key: "cal-dida-official-access-token",
                 value: settings["cal-dida-official-access-token"],
-            },
-            {
-                type: "select",
-                title: "同步方向",
-                description: "选择任务同步的方向",
-                key: "cal-dida-sync-direction",
-                value: settings["cal-dida-sync-direction"],
-                options: {
-                    "siyuan-to-dida": "思源 → 滴答清单",
-                    "dida-to-siyuan": "滴答清单 → 思源",
-                    "both": "双向同步"
-                },
-            },
-            {
-                type: "number",
-                title: "同步间隔（分钟）",
-                description: "自动同步的时间间隔，设置为0表示仅手动同步",
-                key: "cal-dida-sync-interval",
-                value: settings["cal-dida-sync-interval"],
             },
             {
                 type: "checkbox",
@@ -1002,12 +969,6 @@
                                 return;
                             }
 
-                            // 检查必要配置
-                            if (!settings["cal-dida-username"] || !settings["cal-dida-password"]) {
-                                showMessage("请先配置滴答清单用户名和密码", -1, "error");
-                                return;
-                            }
-
                             showMessage("正在同步到滴答清单，请稍候...");
                             await moduleInstances["M_sync"].manualTestDidaProjectTasks();
                         } catch (error) {
@@ -1033,12 +994,6 @@
                             }
                             if (!moduleInstances["M_calendar"]) {
                                 showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
-                                return;
-                            }
-
-                            // 检查必要配置
-                            if (!settings["cal-dida-username"] || !settings["cal-dida-password"]) {
-                                showMessage("请先配置滴答清单用户名和密码", -1, "error");
                                 return;
                             }
 
