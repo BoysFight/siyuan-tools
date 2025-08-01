@@ -269,12 +269,12 @@ async function extractDataFromTable(data: any, avID: string, isZQ = false, type 
                 }
 
                 // 提取项目
-                if (columnMap.has('项目') && row.cells) {
-                    const subCell = row.cells[columnMap.get('项目').index];
+                const projectCell = getCell('项目');
+                if (projectCell) {
                     rowData['项目'] = {
-                        contents: subCell?.value?.relation?.contents || '',
-                        ids: subCell?.value?.relation?.blockIDs || '',
-                        keyID: subCell?.value?.keyID || '',
+                        contents: projectCell.relation?.contents || '',
+                        ids: projectCell.relation?.blockIDs || '',
+                        keyID: projectCell.keyID || '',
                     };
                 }
 

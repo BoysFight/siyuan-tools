@@ -13,7 +13,7 @@ export class M_didaSync {
     private plugin: steveTools;
     private settingdata: any;
     private officialClient?: TickTickOfficialClient;
-    private didaSyncEnabled: boolean = false;
+    private mydidaSyncEnabled: boolean = false;
 
     constructor(plugin: steveTools) {
         this.plugin = plugin;
@@ -21,8 +21,8 @@ export class M_didaSync {
 
     init = async (settingdata) => {
         this.settingdata = settingdata;
-        this.didaSyncEnabled = this.settingdata["cal-dida-enable"];
-        if (this.didaSyncEnabled) {
+        this.mydidaSyncEnabled = this.settingdata["cal-mydida-enable"];
+        if (this.mydidaSyncEnabled) {
             // 初始化官方客户端
             if (this.settingdata["cal-dida-use-official-api"]) {
                 // 初始化官方客户端
@@ -119,7 +119,7 @@ export class M_didaSync {
     }
 
     async syncToDidaList() {
-        if (!this.didaSyncEnabled) {
+        if (!this.mydidaSyncEnabled) {
             showMessage("滴答清单同步未启用");
             return;
         }
@@ -550,7 +550,7 @@ export class M_didaSync {
 
     // 新增：手动触发滴答清单同步
     async manualDidaSync() {
-        if (!this.didaSyncEnabled) {
+        if (!this.mydidaSyncEnabled) {
             showMessage("滴答清单同步未启用");
             return;
         }
@@ -558,7 +558,7 @@ export class M_didaSync {
     }
 
     async getProjectData(projectId: string) {
-        if (!this.didaSyncEnabled) {
+        if (!this.mydidaSyncEnabled) {
             showMessage("滴答清单同步未启用");
             return;
         }

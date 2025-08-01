@@ -73,7 +73,7 @@ export class M_sync {
                     }
 
                     // 处理滴答清单同步
-                    if (this.didaSyncInstance["didaSyncEnabled"] &&
+                    if (this.didaSyncInstance["mydidaSyncEnabled"] &&
                         this.settingdata["docker-sync-auto-trigger-dida"]) {
                         await this.didaSyncInstance.syncToDidaList();
                     }
@@ -145,14 +145,14 @@ export class M_sync {
     getSyncStatus() {
         return {
             dockerSyncEnabled: this.dockerSyncEnabled,
-            didaSyncEnabled: this.didaSyncInstance["didaSyncEnabled"],
+            mydidaSyncEnabled: this.didaSyncInstance["mydidaSyncEnabled"],
             autoTriggerEnabled: this.settingdata["docker-sync-auto-trigger-dida"]
         };
     }
 
     // 新增：手动测试 Dida 并获取对应项目的任务并显示
     async manualTestDidaProjectTasks() {
-        if (!this.didaSyncInstance["didaSyncEnabled"]) {
+        if (!this.didaSyncInstance["mydidaSyncEnabled"]) {
             showMessage("滴答清单同步未启用");
             return;
         }
