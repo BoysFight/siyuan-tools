@@ -90,13 +90,14 @@ export class M_sync {
             return;
         }
 
-        let originalIcon = "";
+        let originalIcon = "#iconST"; // 设置为插件的默认图标
         const iconElement = document.querySelector('#plugin_siyuan-steve-tools_0 svg use');
 
-        // 保存原始图标
+        // 设置同步状态图标
         if (iconElement) {
-            originalIcon = iconElement.getAttribute('xlink:href') || "";
             iconElement.setAttribute('xlink:href', '#iconHistory');
+        } else {
+            console.warn('未找到插件图标元素，跳过图标状态更新');
         }
 
         try {
@@ -110,8 +111,13 @@ export class M_sync {
             showMessage("docker感知出现异常: " + e, -1, "error");
         } finally {
             // 无论成功失败都恢复图标
-            if (originalIcon && iconElement) {
-                iconElement.setAttribute('xlink:href', originalIcon);
+            if (iconElement) {
+                if (originalIcon) {
+                    iconElement.setAttribute('xlink:href', originalIcon);
+                } else {
+                    // 如果没有原始图标，移除xlink:href属性或设置默认图标
+                    iconElement.removeAttribute('xlink:href');
+                }
             }
         }
     }
