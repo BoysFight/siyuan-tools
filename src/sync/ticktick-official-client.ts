@@ -20,6 +20,7 @@ export interface TickTickTask {
     priority?: number; // 0=无，1=低，3=中，5=高
     status?: number; // 0=未完成，2=已完成
     tags?: string[];
+    isAllDay?: boolean;
 }
 
 export interface TickTickProject {

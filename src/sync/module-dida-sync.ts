@@ -112,6 +112,17 @@ export class M_didaSync {
             ));
         }
 
+        // 检查全天事件变化
+        if (updatedTask.isAllDay !== undefined && event?.全天?.content !== updatedTask.isAllDay) {
+            updates.push(api.updateAttrViewCell_pro(
+                blockId,
+                rootId,
+                event.全天.keyID,
+                updatedTask.isAllDay,
+                "checkbox"
+            ));
+        }
+
         // 并行执行所有更新
         if (updates.length > 0) {
             await Promise.all(updates);
@@ -206,6 +217,7 @@ export class M_didaSync {
                         dueDate: this.formatDateToISO(event?.开始时间?.end),
                         status: status,
                         priority: priority,
+                        isAllDay: event?.全天?.content || false, // 添加全天事件字段
                         tags: event?.分类?.content ? [event.分类.content] : [] // 添加标签
                     };
 
@@ -540,6 +552,7 @@ export class M_didaSync {
                 ? `滴答同步完成: ${messageParts.join(', ')}`
                 : '滴答同步完成: 无变化';
 
+            // api.showStatusMessage(message, 3000, "mydida");
             showMessage(message);
 
         } catch (error) {
@@ -681,7 +694,8 @@ export class M_didaSync {
                 dueDate: taskData.dueDate,
                 priority: taskData.priority,
                 status: taskData.status,
-                tags: taskData.tags // 添加标签字段
+                tags: taskData.tags, // 添加标签字段
+                isAllDay: taskData.isAllDay // 添加全天事件字段
             };
             return await this.officialClient.createTask(officialTask);
         }
@@ -712,7 +726,8 @@ export class M_didaSync {
                 dueDate: taskData.dueDate,
                 priority: taskData.priority,
                 status: taskData.status,
-                tags: taskData.tags // 添加标签字段
+                tags: taskData.tags, // 添加标签字段
+                isAllDay: taskData.isAllDay // 添加全天事件字段
             };
             return await this.officialClient.updateTask(taskId, officialTask);
         }

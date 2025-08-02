@@ -95,7 +95,7 @@ export class M_sync {
 
         // 保存原始图标
         if (iconElement) {
-            originalIcon = iconElement.getAttribute('xlink:href');
+            originalIcon = iconElement.getAttribute('xlink:href') || "";
             iconElement.setAttribute('xlink:href', '#iconHistory');
         }
 

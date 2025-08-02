@@ -44,6 +44,13 @@
                     },
                 },
                 {
+                    colName: '全天',
+                    // 对于绑定块，块/文档id === rowID
+                    getColValue: (keyID, rowID, cellID, avID) => {
+                        return {"type": "checkbox", "checkbox": {"checked":true}};
+                    },
+                },
+                {
                     colName: '状态',
                     // 对于绑定块，块/文档id === rowID
                     getColValue: (keyID, rowID, cellID, avID) => {
