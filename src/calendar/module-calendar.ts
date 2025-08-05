@@ -66,9 +66,9 @@ export class M_calendar {
                 let calendar: Calendar
                 this.element.innerHTML = `
                 <div  id='calendarfu-${id}' ><div id='calendar-${id}' ></div></div>`;
-                let cleftbar = 'today,viewFilter,prev,next';
+                let cleftbar = 'today,viewFilter,statsButton,prev,next';
                 if (this_settingdata["lifelog-enable"]) {
-                    cleftbar = 'today viewFilter lifelogToggle prev,next';
+                    cleftbar = 'today viewFilter lifelogToggle statsButton prev,next';
                 }
                 // calendar = await run(id, 'timeGridWeek', '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
                 calendar = await run(id, settingdata["cal-default-view"], '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
@@ -720,7 +720,7 @@ export class M_calendar {
 
         setTimeout(async () => {
             if (viewID) {
-                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle');
+                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle statsButton');
             } else {
                 calendar = await run(id, initialView);
             }
