@@ -23,7 +23,9 @@ import { updateAttrViewCell_pro } from '@/api/api';
 import { getCategoryColor, lifelogColors } from '../lifelog/styles/colors';
 import { LifelogView } from './lifelog-view';
 import { createViewFilterMenu, initializeGroups } from './initializeGroups';
+import { calendarStatsManager } from './stats';
 //审查ok
+
 
 export let isFilter = true;
 export let OUTcalendar: Calendar;
@@ -56,14 +58,21 @@ export async function run(
     id: string,
     initialView = 'dayGridMonth',
     S_viewID = "",
-    cleft = 'prev,next today viewFilter',
+    cleft = 'prev,next today viewFilter,statsButton',
     cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban',
     ccenter = 'title',
     elementca?: any,
 ) {
     // filterViewId = S_viewID ? [S_viewID] : (viewId ? viewId.split(',') : []);
-    const savedViewId = moduleInstances['M_calendar'].calConfig.get('viewId');
-    filterViewId = savedViewId ? savedViewId.split(',') : [];
+    // 如果有指定的S_viewID则使用，否则从配置中获取
+    if (S_viewID) {
+        filterViewId = [S_viewID];
+    } else {
+        const configViewIds = moduleInstances['M_calendar'].calConfig.getViewIds();
+        filterViewId = configViewIds.length > 0 ? configViewIds : (viewId ? viewId.split(',') : []);
+    }
+    // const savedViewId = moduleInstances['M_calendar'].calConfig.get('viewId');
+    // filterViewId = savedViewId ? savedViewId.split(',') : [];
     // 从配置中读取保存的 SlotDuration，有lifelog view的时候的使用缓存的slotDuration
     // 当没有lifelogview的时候，直接使用设置的默认值
     const savedSlotDuration = moduleInstances['M_calendar'].calConfig.get('slotDuration');
@@ -78,6 +87,7 @@ export async function run(
     } else {
         currentSlotDuration = defaultSlotDuration;
     }
+
 
 
     let calendarEl: HTMLElement;
@@ -496,6 +506,27 @@ export async function run(
                     await refreshKanban();
                 }
             }
+            // 统计功能按钮
+            statsButton: {
+                text: '统计',
+                click: async function () {
+                    try {
+                        // 动态导入统计模块，避免影响主要加载性能
+
+                        const events = calendar.getEvents();
+
+                        if (!events || events.length === 0) {
+                            showMessage('当前没有可统计的事件数据', 3000, 'info');
+                            return;
+                        }
+
+                        await calendarStatsManager.showStatsDialog(events);
+                    } catch (error) {
+                        console.error('加载统计模块失败:', error);
+                        showMessage('统计功能暂时不可用', 3000, 'error');
+                    }
+                }
+            },
         },
         // 将 lifelogToggle 按钮添加到工具栏
         headerToolbar: {

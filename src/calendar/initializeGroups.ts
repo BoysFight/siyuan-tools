@@ -131,6 +131,14 @@ export function getUngroupedViews(allViewIds: string[]): string[] {
     return allViewIds.filter(id => !groupedViewIds.has(id));
 }
 
+// 工具函数：获取所有视图ID并去重
+function getAllViewIds(viewIDs: any[]): string[] {
+    const allSpecialViewIds = ['qqcalendar', 'icsSubscription', 'lifelog'];
+    const allSiyuanViewIds = viewIDs.map(v => v.viewId);
+    // 使用 Set 去重，避免特殊视图与思源视图ID重复
+    return [...new Set([...allSpecialViewIds, ...allSiyuanViewIds])];
+}
+
 // 创建视图筛选菜单
 export async function createViewFilterMenu(
     calendarEl: HTMLElement,
@@ -143,6 +151,13 @@ export async function createViewFilterMenu(
 ) {
     const button = calendarEl.querySelector('.fc-viewFilter-button');
     if (!button) return;
+
+    // 确保初始化时UI状态与配置保持一致
+    const configViewIds = moduleInstances['M_calendar'].calConfig.getViewIds();
+    if (JSON.stringify(configViewIds.sort()) !== JSON.stringify(filterViewId.sort())) {
+        setFilterViewId(configViewIds);
+        filterViewId = configViewIds; // 更新本地变量以确保后续逻辑正确
+    }
 
     const viewIDs = await myF.getViewId(av_ids);
 
@@ -203,9 +218,7 @@ export async function createViewFilterMenu(
     menuContent.className = 'view-filter-content';
 
     // 获取所有视图ID（包括特殊视图）
-    const allSpecialViewIds = ['qqcalendar', 'icsSubscription', 'lifelog'];
-    const allSiyuanViewIds = viewIDs.map(v => v.viewId);
-    const allViewIds = [...allSpecialViewIds, ...allSiyuanViewIds];
+    const allViewIds = getAllViewIds(viewIDs);
 
     // 渲染分组（只显示非隐藏的分组）
     userGroups.forEach(group => {
@@ -456,7 +469,9 @@ export async function createViewFilterMenu(
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = filterViewId.includes(viewId);
+        // 从配置中获取真实的选中状态，而不是依赖传入的 filterViewId 参数
+        const configViewIds = moduleInstances['M_calendar'].calConfig.getViewIds();
+        checkbox.checked = configViewIds.includes(viewId);
         checkbox.className = 'view-filter-checkbox';
 
         const labelElement = document.createElement('span');
@@ -471,16 +486,20 @@ export async function createViewFilterMenu(
             if (isSpecial && viewId === 'lifelog') {
                 // 特殊处理 lifelog
                 let newFilterViewId;
-                if (filterViewId.includes('lifelog')) {
-                    newFilterViewId = filterViewId.filter(id => id !== 'lifelog');
+                if (configViewIds.includes('lifelog')) {
+                    newFilterViewId = configViewIds.filter(id => id !== 'lifelog');
                     calendar.setOption('slotDuration', lastSavedLifelogSlotDuration);
                 } else {
-                    newFilterViewId = [...filterViewId, 'lifelog'];
+                    newFilterViewId = [...configViewIds, 'lifelog'];
                     calendar.setOption('slotDuration', '00:10:00');
                 }
+                // 直接更新配置
+                moduleInstances['M_calendar'].calConfig.setViewIds(newFilterViewId);
+                moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
+                moduleInstances['M_calendar'].calConfig.save();
+                // 更新UI状态
                 setFilterViewId(newFilterViewId);
                 checkbox.checked = newFilterViewId.includes('lifelog');
-                saveFilterConfig(newFilterViewId);
                 refreshFiltersDisplay(newFilterViewId, viewIDs);
                 calendar.refetchEvents();
             } else {
@@ -503,17 +522,23 @@ export async function createViewFilterMenu(
         });
     }
 
-    function toggleViewSelection(viewId: string, checkbox: HTMLInputElement, filterViewId: string[], setFilterViewId: (ids: string[]) => void, viewIDs: any[]) {
-        let newFilterViewId;
-        if (filterViewId.includes(viewId)) {
-            newFilterViewId = filterViewId.filter(id => id !== viewId);
-        } else {
-            newFilterViewId = [...filterViewId, viewId];
-        }
-        setFilterViewId(newFilterViewId);
-        checkbox.checked = newFilterViewId.includes(viewId);
-        saveFilterConfig(newFilterViewId);
-        refreshFiltersDisplay(newFilterViewId, viewIDs);
+    function toggleViewSelection(viewId: string, checkbox: HTMLInputElement, _filterViewId: string[], setFilterViewId: (ids: string[]) => void, viewIDs: any[]) {
+        // 使用 M_caldata 的 toggleViewId 方法切换视图ID
+        moduleInstances['M_calendar'].calConfig.toggleViewId(viewId);
+        
+        // 保存配置（先保存再更新UI，确保配置持久化）
+        moduleInstances['M_calendar'].calConfig.set("viewName", "多视图");
+        moduleInstances['M_calendar'].calConfig.save();
+        
+        // 从配置中重新获取最新的视图ID列表，确保与配置保持一致
+        const latestViewIds = moduleInstances['M_calendar'].calConfig.getViewIds();
+        
+        // 更新UI状态，确保checkbox状态与配置一致
+        setFilterViewId(latestViewIds);
+        checkbox.checked = latestViewIds.includes(viewId);
+        
+        // 刷新显示
+        refreshFiltersDisplay(latestViewIds, viewIDs);
     }
 
     function saveFilterConfig(filterViewId: string[]) {
@@ -706,7 +731,7 @@ export async function createViewFilterMenu(
             ungroupedSection.className = 'ungrouped-management-section';
             
             // 获取未分组的视图数量
-            const allViewIds = ['qqcalendar', 'icsSubscription', 'lifelog', ...viewIDs.map(v => v.viewId)];
+            const allViewIds = getAllViewIds(viewIDs);
             const ungroupedViewIds = getUngroupedViews(allViewIds);
             const ungroupedCount = ungroupedViewIds.length;
             
@@ -849,7 +874,7 @@ export async function createViewFilterMenu(
         
         // 渲染可添加的视图
         const availableViewsList = editContent.querySelector('.available-views-list') as HTMLElement;
-        const allViewIds = ['qqcalendar', 'icsSubscription', 'lifelog', ...viewIDs.map(v => v.viewId)];
+        const allViewIds = getAllViewIds(viewIDs);
         const availableViewIds = allViewIds.filter(id => !group.viewIds.includes(id));
         
         availableViewIds.forEach(viewId => {
@@ -873,7 +898,9 @@ export async function createViewFilterMenu(
                 if (viewItem) groupViewsList.appendChild(viewItem);
             });
             
-            const updatedAvailableViewIds = allViewIds.filter(id => !group.viewIds.includes(id));
+            // 重新计算可用视图，确保去重
+            const updatedAllViewIds = getAllViewIds(viewIDs);
+            const updatedAvailableViewIds = updatedAllViewIds.filter(id => !group.viewIds.includes(id));
             updatedAvailableViewIds.forEach(viewId => {
                 const viewItem = createEditViewItem(viewId, viewIDs, () => {
                     addViewToGroup(group.id, viewId);
