@@ -32,13 +32,13 @@ function showMessage(message, isError = false, delay = 7000) {
             pathPattern: null, // 文档路径匹配规则
             titlePattern: /^(Story|Epic|Feature)-/i // 文档标题匹配规则
         },
-        {
-            name: '文章数据库',
-            dbBlockId: '20240915110837-quim9ts',
-            notebookID: '20230322123651-tsuyuox',
-            pathPattern: /^\/\d{14}-[a-z0-9]{7}\.sy$/, // 匹配根目录下的文档，如 /20250627214031-zmsdgbq.sy
-            titlePattern: null // 不需要标题匹配
-        }
+        // {
+        //     name: '文章数据库',
+        //     dbBlockId: '20240915110837-quim9ts',
+        //     notebookID: '20230322123651-tsuyuox',
+        //     pathPattern: /^\/\d{14}-[a-z0-9]{7}\.sy$/, // 匹配根目录下的文档，如 /20250627214031-zmsdgbq.sy
+        //     titlePattern: null // 不需要标题匹配
+        // }
         // 可以添加更多数据库规则
     ];
 
@@ -154,19 +154,19 @@ function showMessage(message, isError = false, delay = 7000) {
                     // 提取路径的最后一个部分（文档标题）
                     const pathParts = params.path.split('/');
                     const lastPart = pathParts[pathParts.length - 1];
-                    
+
                     // 检查是否符合Epic-/Feature-/Story-规则
                     if (!/^(Epic|Feature|Story)-/.test(lastPart)) {
                         return null;
                     }
 
                     // 查找匹配的项目数据库规则
-                    const projectRule = databaseRules.find(rule => 
-                        rule.name === '项目文档数据库' && 
-                        rule.titlePattern && 
+                    const projectRule = databaseRules.find(rule =>
+                        rule.name === '项目文档数据库' &&
+                        rule.titlePattern &&
                         rule.titlePattern.test(lastPart)
                     );
-                    
+
                     if (!projectRule) return null;
 
                     return { dbBlockId: projectRule.dbBlockId, waitForDocId: true };
@@ -182,46 +182,6 @@ function showMessage(message, isError = false, delay = 7000) {
                 scheduleDocProcess(docId, docInfo.dbBlockId, 0);
             }
         },
-        '/api/storage/setLocalStorageVal': {
-            method: 'POST',
-            validateParams: (body) => {
-                try {
-                    const params = JSON.parse(body);
-                    // 验证参数格式
-                    if (!(params &&
-                          params.key === 'local-filespaths' &&
-                          Array.isArray(params.val) &&
-                          params.val.length <= 2)) {
-                            // console.log(`跳过处理：val 数组长度为 ${params.val.length}，期望长度为 <= 2`);
-                            return null;
-                    }
-                    // 遍历所有笔记本路径
-                    for (const item of params.val) {
-                        if (item.notebookId && Array.isArray(item.openPaths)) {
-                            // 检查 openPaths 数组长度
-                            if (item.openPaths.length !== 1) {
-                                // console.log(`跳过处理：openPaths 数组长度为 ${item.openPaths.length}，期望长度为 1`);
-                                continue;
-                            }
-                            const path = item.openPaths[0];
-                            const matchedRule = matchDatabaseRule(item.notebookId, path, '');
-                            const docId = extractDocId(path);
-                            if (matchedRule && docId) {
-                                return { dbBlockId: matchedRule.dbBlockId, docId, isMultiDoc: false };
-                            }
-                        }
-                    }
-                    return null;
-                } catch (err) {
-                    console.error('处理请求参数失败:', err);
-                    return null;
-                }
-            },
-            processResult: (result, docInfo) => {
-                console.log(`开始处理文档 ${docInfo.docId}...`);
-                scheduleDocProcess(docInfo.docId, docInfo.dbBlockId, 0);
-            }
-        }
     };
 
     const originalFetch = window.fetch;
@@ -229,8 +189,7 @@ function showMessage(message, isError = false, delay = 7000) {
         const [url, options] = args;
 
         // 快速路径：只检查特定的 API
-        if (!url.startsWith('/api/storage/setLocalStorageVal') &&
-            !url.startsWith('/api/filetree/renameDoc') &&
+        if (!url.startsWith('/api/filetree/renameDoc') &&
             !url.startsWith('/api/filetree/createDailyNote') &&
             !url.startsWith('/api/filetree/createDocWithMd')) {
             return originalFetch.apply(this, args);
