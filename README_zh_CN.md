@@ -6,12 +6,12 @@ STEVETOOLS
 [![GitHub license](https://img.shields.io/github/license/loonghfut/siyuan-steve-tools)](https://github.com/loonghfut/siyuan-steve-tools/blob/main/LICENSE)
 [![GitHub all releases](https://img.shields.io/github/downloads/loonghfut/siyuan-steve-tools/total)](https://github.com/loonghfut/siyuan-steve-tools/releases)
 
-这是一个自用工具集合，在我自己使用的同时，分享出来也希望能够帮助到有相关需求的其他人。`<所有功能开源免费>`
+这是一个自用工具集合，在我自己使用的同时，分享出来也希望能够帮助到有相关需求的其他人。`<所有功能开源免费?>`
 
 （注：由于是自用工具插件，可能会有一些不完善的地方，甚至出现数据遗失！！（因为使用了思源数据操作相关的api），请自行测试无问题的情况下再使用，若在使用过程中出现问题，请及时反馈）   
  若介意请勿使用。
 ### 若发现BUG或者有好的建议，欢迎提issue或者PR。
-由于最近几乎没有收益，因此功能的开发主要取决于我个人需求和相关功能使用情况，不再考虑开发和维护个人用不到且使用人数很少的功能（帮助过我的用户的需求除外），毕竟这本就是自用免费分享插件。
+由于最近几乎没有收益，因此功能的开发主要取决于我个人需求和相关功能使用情况，不再考虑开发和维护个人用不到且使用人数很少的功能（帮助过我的用户的需求除外），毕竟这本就是自用免费分享插件?。
 
 ### [问题反馈请在社区发帖](https://ld246.com/post?type=5)  
 （请优先在GitHub上反馈，实在访问不了再用社区发帖）
@@ -34,14 +34,15 @@ win端s3同步后，docker端感知s3同步。
 #### 更新日志:
 
 
-### v0.11.3 (2025年08月03日)
-- 优化描述 (loonghfut)
-- 优化md (loonghfut)
-- 更新版本号至 0.11.2 (loonghfut)
-- 继续优化描述 (loonghfut)
-- 优化日程统计面板 (loonghfut)
-- 更改md (loonghfut)
-- 更新版本号至 0.11.3 (loonghfut)
+### v0.11.4 (2025年08月05日)
+- 移除部分统计代码 (loonghfut)
+- 优化打包 (loonghfut)
+- 优化默认设置 (loonghfut)
+- 优化滴答任务同步逻辑，增加同步状态返回值以判断是否有任务更新 (loonghfut)
+- 优化同步任务逻辑，增加网络状态检查和离线模式的错误判断 (loonghfut)
+- 滴答：修复思源端无法归档的BUG (loonghfut)
+- ? (loonghfut)
+- 更新版本号至0.11.4 (loonghfut)
 
 
 更多详见[提交记录](https://github.com/loonghfut/siyuan-steve-tools/commits/main-2/)

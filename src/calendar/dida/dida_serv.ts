@@ -147,9 +147,13 @@ export class Dida365Service {
         // 设置新的计时器
         this.syncDebounceTimer = setTimeout(async () => {
             try {
+                let isUpdate = false;
                 console.log("防抖等待完成，开始执行同步任务到思源");
-                await this.syncTasksToSiyuan();
+                isUpdate = await this.syncTasksToSiyuan();
                 this.syncDebounceTimer = null; // 清空计时器引用
+                if (isUpdate) {
+                    showMessage("滴答任务同步不一致", 2000, "info", "dida-sync");
+                }
             } catch (error) {
                 console.error("防抖同步执行失败:", error);
                 this.syncDebounceTimer = null; // 清空计时器引用
@@ -159,24 +163,37 @@ export class Dida365Service {
         console.log("设置防抖同步计时器，将在10秒后执行（如无新的调用）");
     }
 
-    async syncTasksToSiyuan(): Promise<void> {
+    async syncTasksToSiyuan(): Promise<boolean> {
         this.isSyncing = true; // 开始同步，锁定
         showStatusMessage("正在同步滴答清单任务，请稍候...", 10000, "dida-sync");
         try {
             // 获取滴答清单的所有任务
-            const didaTasks = await this.getAllTasks();
+            let didaTasks: Task[] = [];
+            let isOnline = true;
+            
+            try {
+                didaTasks = await this.getAllTasks();
+                console.log("❤️❤️❤️❤️❤️")
+            } catch (error) {
+                console.log("💩💩💩💩💩");
+                console.error("获取滴答清单任务失败，可能网络断开:", error);
+                isOnline = false;
+                // 断网时使用缓存数据
+                didaTasks = Array.from(this.taskCache.values());
+                showMessage("网络连接异常，使用缓存数据进行同步（不会执行归档操作）", 5000, "error");
+            }
 
             // 获取思源数据库的现有数据
             if (!this.avId) {
                 showMessage("数据库ID未设置，无法同步", -1, "error");
-                return;
+                return false;
             }
 
             const viewValue = await this.getAvViewData("同步任务到思源");
 
             if (!viewValue || !Array.isArray(viewValue) || viewValue.length === 0) {
                 showMessage("无法获取数据库视图数据", -1, "error");
-                return;
+                return false;
             }
 
             // 遍历所有 viewValue，合并所有任务数据
@@ -220,30 +237,42 @@ export class Dida365Service {
                 }
             }
 
-            // 检查思源中存在但滴答清单中不存在的任务，将其状态设置为"归档"
-            const tasksToArchive = [];
-            for (const [didaId, existingTask] of existingTasksMap) {
-                if (!didaTaskIds.has(didaId) && existingTask.状态?.content !== "归档") {
-                    tasksToArchive.push(existingTask);
+            // 只有在网络正常时才执行归档操作
+            if (isOnline) {
+                // 检查思源中存在但滴答清单中不存在的任务，将其状态设置为"归档"
+                const tasksToArchive = [];
+                for (const [didaId, existingTask] of existingTasksMap) {
+                    if (!didaTaskIds.has(didaId) && existingTask.状态?.content !== "归档") {
+                        tasksToArchive.push(existingTask);
+                    }
                 }
+
+                if (tasksToArchive.length > 0) {
+                    archiveCount = await this.archiveSiyuanTasksBatch(tasksToArchive);
+                    console.log(`批量归档了 ${archiveCount} 个任务`);
+                }
+            } else {
+                console.log("网络异常，跳过归档检查以避免误操作");
             }
 
-            if (tasksToArchive.length > 0) {
-                archiveCount = await this.archiveSiyuanTasksBatch(tasksToArchive);
-                console.log(`批量归档了 ${archiveCount} 个任务`);
+            const statusMessage = isOnline 
+                ? (archiveCount > 0
+                    ? `同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务，归档 ${archiveCount} 个任务`
+                    : `同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务`)
+                : `离线同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务（未执行归档检查）`;
+
+            if (syncCount > 0 || updateCount > 0 || archiveCount > 0) {
+                showStatusMessage(statusMessage, 3000, "dida-sync");
+                return true;
+            } else {
+                showStatusMessage(isOnline ? "没有需要同步的任务" : "没有需要同步的任务（离线模式）", -1, "dida-sync");
+                return false;
             }
-
-            const statusMessage = archiveCount > 0
-                ? `同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务，归档 ${archiveCount} 个任务`
-                : `同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务`;
-            showStatusMessage(statusMessage, 3000, "dida-sync");
-
         } catch (error) {
             console.error("同步滴答清单任务失败:", error);
             showMessage("同步失败：" + (error instanceof Error ? error.message : String(error)), -1, "error", "dida-sync");
         } finally {
             this.isSyncing = false; // 同步结束，解锁
-            // showMessage("滴答清单任务同步已完成", 2000, "info", "dida-sync");
         }
     }
 
@@ -937,7 +966,11 @@ ${taskData.描述?.content || "描述：暂无"}
                     statusTags.push('完成');
                 } else if (newStatus === '进行中') {
                     statusTags.push('进行中');
-                } else {
+                } else if (newStatus === '归档') {
+                    statusTags.push('归档');
+                }
+                // 如果没有状态标签，则默认为未完成 
+                else {
                     statusTags.push('未完成');
                 }
                 updatePayload.tags = [...tagsFromSiyuan, ...statusTags];
@@ -1086,6 +1119,7 @@ ${taskData.描述?.content || "描述：暂无"}
                 }
             } catch (error) {
                 console.warn(`获取项目 (ID: ${projectId}) 的任务失败:`, error instanceof Error ? error.message : String(error));
+                throw new Error(`获取项目 (ID: ${projectId}) 的任务失败: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
         return allTasks;

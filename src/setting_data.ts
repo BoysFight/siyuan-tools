@@ -114,7 +114,7 @@ export const defaultSettings = {
     // API调用延时控制
     "api-transaction-delay": 500, // API调用延时（毫秒），默认500ms
     "api-transaction-retry-count": 3, // API调用重试次数，默认3次
-    "transaction-delay": 800, // 事务延迟时间（毫秒）
+    "transaction-delay": 1000, // 事务延迟时间（毫秒）
 };
 
 export function getSettings() {

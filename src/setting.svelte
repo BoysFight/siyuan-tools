@@ -872,51 +872,6 @@
                         step: 100,
                     },
                 },
-                {
-                    type: "button",
-                    title: "今日本插件使用情况",
-                    description: "查看本插件的使用情况",
-                    key: "e",
-                    value: "查看",
-                    button: {
-                        label: "查看",
-                        callback: async () => {
-                            if (!settings["PluginUsageStatistics"]) {
-                                showMessage(
-                                    "请先允许统计才能查看此插件的使用情况",
-                                );
-                                return;
-                            }
-                            const data = await myapi.getFromApi2("/admin");
-                            // console.log(data);
-                            showMessage(`人数：${data.data}`);
-                        },
-                    },
-                },
-                {
-                    type: "number",
-                    title: "API调用延时",
-                    description: "API调用之间的延时时间（毫秒），建议500-2000ms",
-                    key: "api-transaction-delay",
-                    value: settings["api-transaction-delay"],
-                    slider: {
-                        min: 100,
-                        max: 5000,
-                        step: 100
-                    }
-                },
-                {
-                    type: "number",
-                    title: "API调用重试次数",
-                    description: "API调用失败时的重试次数，建议1-5次",
-                    key: "api-transaction-retry-count",
-                    value: settings["api-transaction-retry-count"],
-                    slider: {
-                        min: 1,
-                        max: 10,
-                        step: 1
-                    }
-                },
             ],
         },
         {
