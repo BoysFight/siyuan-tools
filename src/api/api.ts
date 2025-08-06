@@ -1008,6 +1008,9 @@ async function refreshAttributeView(avID: string) {
 // 处理滴答清单事件
 export async function handleDidaListEvent(avID: string, blockId: string) {
     try {
+        // 触发思源同步
+        await sync();
+
         // 检查是否为滴答清单数据库
         const didaDbId = settingdata['cal-dida-db-id'];
         if (!didaDbId || avID !== didaDbId) {
