@@ -8,7 +8,7 @@ import { moduleInstances } from '@/index';
 import { ISelectOption } from "@/calendar/interface";
 import steveTools from "@/index";
 import { refreshKanban } from './kanban';
-import { runblockdata_for_category, runblockdata_for_note, runblockdata_for_sub, runblockdata_for_time, runblockdata_for_title } from './quickadd';
+import { runblockdata_for_category, runblockdata_for_note, runblockdata_for_sub, runblockdata_for_tags, runblockdata_for_time, runblockdata_for_title } from './quickadd';
 // import { isEventCompleted } from './calendar';
 import { createDailynote } from '@frostime/siyuan-plugin-kits';
 import { getRequiredFields } from './fieldConfig';
@@ -396,54 +396,61 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
     // 处理普通事件
     for (const view of viewData) {
         for (const item of view.data) {
-            if (item['开始时间']?.start) {
-                const eventId = item['事件']?.id || '';
+            const eventId = item['事件']?.id || '';
 
-                if (eventId && !addedEventIds.has(eventId)) {
-                    addedEventIds.add(eventId);
+            if (eventId && !addedEventIds.has(eventId)) {
+                addedEventIds.add(eventId);
 
-                    const startDate = new Date(parseInt(item['开始时间'].start));
-                    const endDate = item['开始时间'].end ? new Date(parseInt(item['开始时间'].end)) : null;
+                // 检查是否设置了开始时间
+                const hasStartTime = item['开始时间']?.start;
+                const startDate = hasStartTime 
+                    ? new Date(parseInt(item['开始时间'].start))
+                    : new Date(new Date().setHours(8, 0, 0, 0));
+                const endDate = item['开始时间']?.end ? new Date(parseInt(item['开始时间'].end)) : null;
 
-                    // 优先使用数据库中的全天设置，如果没有则按原逻辑判断
-                    const isAllDay = item['全天']?.content !== undefined
+                // 优先判断逻辑：
+                // 1. 首先判断是否有开始时间，没有则直接为全天事件
+                // 2. 然后使用数据库中的全天设置
+                // 3. 最后按时间判断（0点为全天事件）
+                const isAllDay = !hasStartTime 
+                    ? true
+                    : (item['全天']?.content !== undefined
                         ? item['全天'].content
                         : (startDate.getHours() === 0 && startDate.getMinutes() === 0 &&
-                            (!endDate || (endDate.getHours() === 0 && endDate.getMinutes() === 0)));
+                            (!endDate || (endDate.getHours() === 0 && endDate.getMinutes() === 0))));
 
-                    let kramdown = "";
-                    if (item['主事件']?.content || false) {
-                        kramdown = (await api.getBlockKramdown(eventId)).kramdown;
-                    }
-                    events.push({
-                        id: eventId,
-                        title: item['事件']?.content || '',
-                        start: startDate,
-                        end: endDate,
-                        allDay: isAllDay,
-                        extendedProps: {
-                            blockId: eventId,
-                            kramdown: kramdown,
-                            iskramdown: item['主事件']?.content || false,
-                            rootid: view.from.rootid,
-                            status: item['状态']?.content || '',
-                            description: item['描述']?.content || '',
-                            isRecurring: false,
-                            priority: item['优先级']?.content || '无',
-                            category: item['分类']?.content || '无',
-                            sub: item['子级'] || '',
-                            hasCircularRef: false,
-                            statusid: item['状态']?.keyID || '',
-                            priorityid: item['优先级']?.keyID || '',
-                            categoryid: item['分类']?.keyID || '',
-                            subid: item['子级']?.keyID || '',
-                            descriptionid: item['描述']?.keyID || '',
-                            allDayId: item['全天']?.keyID || '',
-                            Kstart: startDate,
-                            Kend: endDate,
-                        }
-                    });
+                let kramdown = "";
+                if (item['主事件']?.content || false) {
+                    kramdown = (await api.getBlockKramdown(eventId)).kramdown;
                 }
+                events.push({
+                    id: eventId,
+                    title: item['事件']?.content || '',
+                    start: startDate,
+                    end: endDate,
+                    allDay: isAllDay,
+                    extendedProps: {
+                        blockId: eventId,
+                        kramdown: kramdown,
+                        iskramdown: item['主事件']?.content || false,
+                        rootid: view.from.rootid,
+                        status: item['状态']?.content || '',
+                        description: item['描述']?.content || '',
+                        isRecurring: false,
+                        priority: item['优先级']?.content || '无',
+                        category: item['分类']?.content || '无',
+                        sub: item['子级'] || '',
+                        hasCircularRef: false,
+                        statusid: item['状态']?.keyID || '',
+                        priorityid: item['优先级']?.keyID || '',
+                        categoryid: item['分类']?.keyID || '',
+                        subid: item['子级']?.keyID || '',
+                        descriptionid: item['描述']?.keyID || '',
+                        allDayId: item['全天']?.keyID || '',
+                        Kstart: startDate,
+                        Kend: endDate,
+                    }
+                });
             }
         }
     }
@@ -452,65 +459,68 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
     if (viewData_zq) {
         for (const view of viewData_zq) {
             for (const item of view.data) {
-                if (item['开始时间']?.start) {
-                    const eventId = item['事件']?.id || '';
+                const eventId = item['事件']?.id || '';
 
-                    if (eventId && !addedEventIds.has(eventId)) {
-                        addedEventIds.add(eventId);
+                if (eventId && !addedEventIds.has(eventId)) {
+                    addedEventIds.add(eventId);
 
-                        const startDate = new Date(parseInt(item['开始时间'].start));
-                        const endDate = item['开始时间'].end ? new Date(parseInt(item['开始时间'].end)) : null;
-                        steveTools.outlog("startDate:::", startDate, "endDate:::", endDate);
-                        const isAllDay = false;
-                        // (startDate.getHours() === 0 && startDate.getMinutes() === 0 &&
-                        //     (!endDate || (endDate.getHours() === 0 && endDate.getMinutes() === 0))) ||
-                        // (endDate && startDate.getTime() === endDate.getTime());
+                    // 检查是否设置了开始时间
+                    const hasStartTime = item['开始时间']?.start;
+                    const startDate = hasStartTime 
+                        ? new Date(parseInt(item['开始时间'].start))
+                        : new Date(new Date().setHours(0, 0, 0, 0));
+                    const endDate = item['开始时间']?.end ? new Date(parseInt(item['开始时间'].end)) : null;
+                    steveTools.outlog("startDate:::", startDate, "endDate:::", endDate);
+                    // 对于周期事件，如果没有设置开始时间，默认为全天事件
+                    const isAllDay = !hasStartTime;
+                    // (startDate.getHours() === 0 && startDate.getMinutes() === 0 &&
+                    //     (!endDate || (endDate.getHours() === 0 && endDate.getMinutes() === 0))) ||
+                    // (endDate && startDate.getTime() === endDate.getTime());
 
-                        const rruleStr = item['重复规则']?.content
-                            ? `DTSTART:${startDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z\n${item['重复规则'].content}`
-                            : '';
-                        if (!rruleStr) { continue; }
+                    const rruleStr = item['重复规则']?.content
+                        ? `DTSTART:${startDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z\n${item['重复规则'].content}`
+                        : '';
+                    if (!rruleStr) { continue; }
 
-                        // 获取 kramdown 内容
-                        let kramdown = "";
-                        if (item['主事件']?.content || false) {
-                            kramdown = (await api.getBlockKramdown(eventId)).kramdown;
-                        }
-
-                        events.push({
-                            id: eventId,
-                            title: item['事件']?.content || '',
-                            start: startDate,
-                            // end: endDate,
-                            timeZone: 'local',
-                            allDay: isAllDay,
-                            rrule: rruleStr,
-                            duration: item['持续时间']?.content || 1,
-                            extendedProps: {
-                                blockId: eventId,
-                                rootid: view.from.rootid,
-                                kramdown: kramdown,
-                                status: '未完成',
-                                description: item['描述']?.content || '',
-                                priority: item['优先级']?.content || '无',
-                                category: item['分类']?.content || '无',
-                                isRecurring: true,
-                                recurringPattern: item['重复规则']?.content || '',
-                                okday: item['完成日期']?.content || '',
-                                okdayid: item['完成日期']?.keyID || '',
-                                ////////////////////////////////////////
-                                // statusid: item['状态']?.keyID || '',
-                                priorityid: item['优先级']?.keyID || '',
-                                categoryid: item['分类']?.keyID || '',
-                                subid: item['子级']?.keyID || '',
-                                descriptionid: item['描述']?.keyID || '',
-                                Kstart: startDate,
-                                Kend: endDate,
-                                sub: item['子级'] || '',
-                                // hasCircularRef: false
-                            }
-                        });
+                    // 获取 kramdown 内容
+                    let kramdown = "";
+                    if (item['主事件']?.content || false) {
+                        kramdown = (await api.getBlockKramdown(eventId)).kramdown;
                     }
+
+                    events.push({
+                        id: eventId,
+                        title: item['事件']?.content || '',
+                        start: startDate,
+                        // end: endDate,
+                        timeZone: 'local',
+                        allDay: isAllDay,
+                        rrule: rruleStr,
+                        duration: item['持续时间']?.content || 1,
+                        extendedProps: {
+                            blockId: eventId,
+                            rootid: view.from.rootid,
+                            kramdown: kramdown,
+                            status: '未完成',
+                            description: item['描述']?.content || '',
+                            priority: item['优先级']?.content || '无',
+                            category: item['分类']?.content || '无',
+                            isRecurring: true,
+                            recurringPattern: item['重复规则']?.content || '',
+                            okday: item['完成日期']?.content || '',
+                            okdayid: item['完成日期']?.keyID || '',
+                            ////////////////////////////////////////
+                            // statusid: item['状态']?.keyID || '',
+                            priorityid: item['优先级']?.keyID || '',
+                            categoryid: item['分类']?.keyID || '',
+                            subid: item['子级']?.keyID || '',
+                            descriptionid: item['描述']?.keyID || '',
+                            Kstart: startDate,
+                            Kend: endDate,
+                            sub: item['子级'] || '',
+                            // hasCircularRef: false
+                        }
+                    });
                 }
             }
         }
@@ -653,6 +663,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         const ce = runblockdata_for_time(blockdata?.kramdown);
         const minsub = runblockdata_for_sub(blockdata?.kramdown);
         const categorie = runblockdata_for_category(blockdata?.kramdown);
+        const tags= runblockdata_for_tags(blockdata?.kramdown);
         const note = runblockdata_for_note(blockdata?.kramdown);
         const title = runblockdata_for_title(blockdata?.kramdown);
         console.log("title:::", title);
@@ -673,6 +684,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         const checkboxKeyID = await getKeyIDfromViewValue(viewValue, '主事件', to_db_id);
         const allDayKeyID = await getKeyIDfromViewValue(viewValue, '全天', to_db_id);
         const categoryKeyID = await getKeyIDfromViewValue(viewValue, '分类', to_db_id);
+        const tagsKeyID = await getKeyIDfromViewValue(viewValue, '标签', to_db_id);
         const noteKeyID = await getKeyIDfromViewValue(viewValue, '描述', to_db_id);
         const titleKeyID = await getKeyIDfromViewValue(viewValue, '事件', to_db_id);
         const priorityKeyID = await getKeyIDfromViewValue(viewValue, '优先级', to_db_id);
@@ -691,6 +703,10 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         if (categoryKeyID && categorie) {
             const categoryData: ISelectOption[] = [{ content: categorie }];
             updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, categoryKeyID, categoryData, "select"));
+        }
+        if (tagsKeyID && tags) {
+            const tagsData: ISelectOption[] = tags.map(tag => ({ content: tag }));
+            updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, tagsKeyID, tagsData, "mSelect"));
         }
         if (noteKeyID && note) {
             updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, noteKeyID, note, "text"));
@@ -935,9 +951,8 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             // 添加数据库属性
             //// 添加时间和状态属性
             const timeKeyID = await getKeyIDfromViewValue(viewValue, '开始时间', to_db_id);
-            // console.log("viewValue:::", viewValue);
-            // console.log("timeKeyID:::", timeKeyID);
             const categoryKeyID = await getKeyIDfromViewValue(viewValue, '分类', to_db_id);
+            const tagsKeyID = await getKeyIDfromViewValue(viewValue, '标签', to_db_id);
             const priorityKeyID = await getKeyIDfromViewValue(viewValue, '优先级', to_db_id);
             const checkboxKeyID = await getKeyIDfromViewValue(viewValue, '主事件', to_db_id);
             const allDayKeyID = await getKeyIDfromViewValue(viewValue, '全天', to_db_id);
@@ -956,6 +971,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             const ce = runblockdata_for_time(blockdata?.kramdown);
             const minsub = runblockdata_for_sub(blockdata?.kramdown);
             const category1 = runblockdata_for_category(blockdata?.kramdown);
+            const tags = runblockdata_for_tags(blockdata?.kramdown);
             const note = runblockdata_for_note(blockdata?.kramdown);
             // 手动输入分类优先
             const category = category1 || category2;
@@ -983,6 +999,10 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             }
             if (category && categoryKeyID && categoryData && category !== "加载中..." && category !== "无") {
                 updatePromises2.push(api.updateAttrViewCell_pro(id, to_db_id, categoryKeyID, categoryData, "select"));
+            }
+            if (tags && tags.length > 0) {
+                const tagsData: ISelectOption[] = tags.map(tag => ({ content: tag }));
+                updatePromises2.push(api.updateAttrViewCell_pro(id, to_db_id, tagsKeyID, tagsData, "mSelect"));
             }
             if (priority && priorityKeyID && priorityData) {
                 updatePromises2.push(api.updateAttrViewCell_pro(id, to_db_id, priorityKeyID, priorityData, "select"));

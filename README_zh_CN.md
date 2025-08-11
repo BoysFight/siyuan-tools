@@ -6,15 +6,15 @@ STEVETOOLS
 [![GitHub license](https://img.shields.io/github/license/loonghfut/siyuan-steve-tools)](https://github.com/loonghfut/siyuan-steve-tools/blob/main/LICENSE)
 [![GitHub all releases](https://img.shields.io/github/downloads/loonghfut/siyuan-steve-tools/total)](https://github.com/loonghfut/siyuan-steve-tools/releases)
 
-这是一个自用工具集合，在我自己使用的同时，分享出来也希望能够帮助到有相关需求的其他人。`<所有功能开源免费?>`
+这是一个自用工具集合？那为什么做了那么多我用不到的功能？那为什么耗费那么多夜晚来开发维护用不到的功能？（反思），~~在我自己使用的同时，分享出来也希望能够帮助到有相关需求的其他人。~~`<所有功能开源免费?>`
 
 （注：由于是自用工具插件，可能会有一些不完善的地方，甚至出现数据遗失！！（因为使用了思源数据操作相关的api），请自行测试无问题的情况下再使用，若在使用过程中出现问题，请及时反馈）   
- 若介意请勿使用。
-### 若发现BUG或者有好的建议，欢迎提issue或者PR。
-由于最近几乎没有收益，因此功能的开发主要取决于我个人需求和相关功能使用情况，不再考虑开发和维护个人用不到且使用人数很少的功能（帮助过我的用户的需求除外），毕竟这本就是自用免费分享插件?。
+### 若介意请勿使用。
+#### ~~若发现BUG或者有好的建议，欢迎提issue或者PR。~~
+_**由于最近几乎没有收益，因此功能的开发主要取决于我<a class="tooltip" title="指开发者自身实际使用该插件时遇到的需求和想要实现的功能">个人需求</a>和<a class="tooltip" title="通过插件设置页面统计获得功能使用数据，可通过设置关闭统计">相关功能使用情况</a>，不再考虑开发和维护个人用不到且使用人数很少的功能，毕竟这本就是自用免费分享插件，现已无热情无偿开发额外功能。**_
 
-### [问题反馈请在社区发帖](https://ld246.com/post?type=5)  
-（请优先在GitHub上反馈，实在访问不了再用社区发帖）
+### ~~[问题反馈请在社区发帖](https://ld246.com/post?type=5)~~  
+~~（请优先在GitHub上反馈，实在访问不了再用社区发帖）~~
 #### 目前工具 ([插件演示和教程](https://ld246.com/search?q=sttools))
 1. 互联日程管理：   （[相关演示](https://ld246.com/article/1737464243546?r=stevehfut)） [简单教程](https://ld246.com/article/1738929421466?r=stevehfut)   [视频教程](https://ld246.com/article/1739584703693)  
 和思源深度融合的日历视图和看板视图, 同时用于生成日历文件ics，实现日程同步到支持url订阅的日历软件中，比如thunderbird，小米日历，苹果日历等，支持订阅ics链接导入其他软件日程，支持与滴答清单的初步联动。     
@@ -29,20 +29,17 @@ win端s3同步后，docker端感知s3同步。
 6. Lifelog：（开源替代，如需更好体验请使用[叶归插件](https://simplest-frontend.feishu.cn/docx/B3NndXHi7oLLXJxnxQmcczRsnse)）  
 用法基本和叶归插件一样，由[BoysFight](https://github.com/BoysFight) PR实现。
 
-#### 目前主要是我自己使用，实在没精力和动力去制作详细教程（简单的使用方式会在社区发）。要是您希望我能制作详细教程，请[打赏](https://pic.imgdb.cn/item/6751b929d0e0a243d4de55a7.png)或者给项目点 [star](https://github.com/loonghfut/siyuan-steve-tools) ，若长期没有打赏和star，后续的功能交互提示可能会很潦草，还请见谅。
+#### 开发动力来源[打赏](https://pic.imgdb.cn/item/6751b929d0e0a243d4de55a7.png) [star](https://github.com/loonghfut/siyuan-steve-tools) 
 
 #### 更新日志:
 
 
-### v0.11.4 (2025年08月05日)
-- 移除部分统计代码 (loonghfut)
-- 优化打包 (loonghfut)
-- 优化默认设置 (loonghfut)
-- 优化滴答任务同步逻辑，增加同步状态返回值以判断是否有任务更新 (loonghfut)
-- 优化同步任务逻辑，增加网络状态检查和离线模式的错误判断 (loonghfut)
-- 滴答：修复思源端无法归档的BUG (loonghfut)
-- ? (loonghfut)
-- 更新版本号至0.11.4 (loonghfut)
+### v0.12.1 (2025年08月10日)
+- 滴答：修复代码格式问题并添加归档状态处理 (loonghfut)
+- feat: 添加标签处理功能并更新相关字段 (loonghfut)
+- 滴答：优化添加任务标签处理 (loonghfut)
+- docs: 更新 v0.12.1 版本的更新日志 (loonghfut)
+- 。 (loonghfut)
 
 
 更多详见[提交记录](https://github.com/loonghfut/siyuan-steve-tools/commits/main-2/)

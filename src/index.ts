@@ -30,7 +30,7 @@ import { M_ai } from "./ai/ai";
 import { M_handwriting } from "./handwriting/module-handwriting";
 import { M_imageCompression } from "./ImageCompression/module-imageCompression";
 import { M_lifelog } from "./lifelog/module-lifelog";
-import { trackFeatureUsage } from "./stats/public-stats";
+import { check, trackFeatureUsage } from "./stats/public-stats";
 
 // import * as api from "@/api"
 import SettingExample from "@/setting.svelte";
@@ -120,15 +120,18 @@ export default class steveTools extends Plugin {
             steveTools.outlog("onLayoutReady--" + moduleName);
             await moduleInstances[moduleName]?.onLayoutReady?.();
         }
-        
+
         if (settingdata["PluginUsageStatistics"]) {
+            await this.pluginConfig.load();
             await this.Stats();
         }
+
+        check();
     }
 
     private async Stats() {
         try {
-            const enabledFeatures = ["plugin"];
+            const enabledFeatures = [""];
             if (settingdata["cal-enable"]) {
                 enabledFeatures.push("calendar");
             }
@@ -142,13 +145,19 @@ export default class steveTools extends Plugin {
                 enabledFeatures.push("sync");
             }
             if (settingdata["img-compress-enable"]) {
-                enabledFeatures.push("image_compression");
+                enabledFeatures.push("image");
             }
             if (settingdata["lifelog-enable"]) {
                 enabledFeatures.push("lifelog");
             }
-            if( settingdata["cal-dida-enable"]){
+            if (settingdata["cal-dida-enable"]) {
                 enabledFeatures.push("dida");
+            }
+            if (settingdata["cal-ics-enable-subscribe"]) {
+                enabledFeatures.push("ics");
+            }
+            if (settingdata["cal-qq-enable"]) {
+                enabledFeatures.push("qq");
             }
             const mergedFeatures = enabledFeatures.join("+");
             console.log("功能:", mergedFeatures);
@@ -156,6 +165,7 @@ export default class steveTools extends Plugin {
         } catch (error) {
             console.warn("统计失败:", error);
         }
+
     }
     async onunload() {
         // 卸载模块

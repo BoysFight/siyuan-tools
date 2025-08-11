@@ -170,7 +170,7 @@ export class Dida365Service {
             // 获取滴答清单的所有任务
             let didaTasks: Task[] = [];
             let isOnline = true;
-            
+
             try {
                 didaTasks = await this.getAllTasks();
                 console.log("❤️❤️❤️❤️❤️")
@@ -255,7 +255,7 @@ export class Dida365Service {
                 console.log("网络异常，跳过归档检查以避免误操作");
             }
 
-            const statusMessage = isOnline 
+            const statusMessage = isOnline
                 ? (archiveCount > 0
                     ? `同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务，归档 ${archiveCount} 个任务`
                     : `同步完成：新建 ${syncCount} 个任务，更新 ${updateCount} 个任务`)
@@ -372,6 +372,8 @@ export class Dida365Service {
                 return "完成";
             } else if (task.tags?.includes("进行中")) {
                 return "进行中";
+            } else if (task.tags?.includes('归档')) {
+                return "归档";
             } else {
                 return "未完成"
             }
@@ -974,7 +976,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     statusTags.push('未完成');
                 }
                 updatePayload.tags = [...tagsFromSiyuan, ...statusTags];
-
+                console.log("❤️❤️❤️❤️更新的任务内容：", updatePayload);
                 if (Object.keys(updatePayload).length > 0) {
                     await this.apiClient.updateTask(didaTaskId, {
                         ...updatePayload,
@@ -1026,7 +1028,17 @@ ${taskData.描述?.content || "描述：暂无"}
                         priority: siyuanTask.优先级?.content ? { "无": 0, "低": 1, "中": 3, "高": 5 }[siyuanTask.优先级.content] : 0,
                         startDate: siyuanTask.开始时间?.start ? formatDateToISO(siyuanTask.开始时间.start) : undefined,
                         dueDate: siyuanTask.开始时间?.end ? formatDateToISO(siyuanTask.开始时间.end) : undefined,
-                        tags: siyuanTask.状态?.content ? [siyuanTask.状态.content] : [],
+                        // 标签处理优化：合并标签和状态标签
+                        tags: [
+                            ...(siyuanTask.标签?.content || []).map((item: any) => item),
+                            (() => {
+                                const status = siyuanTask.状态?.content;
+                                if (status === '完成') return '完成';
+                                if (status === '进行中') return '进行中';
+                                if (status === '归档') return '归档';
+                                return '未完成';
+                            })()
+                        ],
                     };
 
                     const newDidaTask = await this.apiClient.createTask(createTaskPayload);

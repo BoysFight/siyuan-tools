@@ -97,17 +97,19 @@ const PRIORITY_MAP = {
 
 export function sortEvents(events: NestedKBCalendarEvent[]): NestedKBCalendarEvent[] {
     return events.sort((a, b) => {
-        // 先按优先级排序
-        const priorityA = PRIORITY_MAP[a.extendedProps.priority] || 0;
-        const priorityB = PRIORITY_MAP[b.extendedProps.priority] || 0;
+        // 已完成事件排在后面
+        const statusA = a.extendedProps.status || '未完成';
+        const statusB = b.extendedProps.status || '未完成';
+        const isDoneA = statusA === '完成';
+        const isDoneB = statusB === '完成';
 
-        if (priorityA !== priorityB) {
-            return priorityB - priorityA; // 高优先级在前
+        if (isDoneA !== isDoneB) {
+            return isDoneA ? 1 : -1; // 已完成在后
         }
 
-        // 优先级相同则按创建时间排序
-        const timeA = new Date(a.extendedProps.Kstart).getTime();
-        const timeB = new Date(b.extendedProps.Kstart).getTime();
+        // 未完成/进行中事件按时间升序
+        const timeA = new Date(a.range?.end || a.range?.start || a.extendedProps.Kstart).getTime();
+        const timeB = new Date(b.range?.end || b.range?.start || b.extendedProps.Kstart).getTime();
         return timeA - timeB;
     }).map(event => {
         if (event.children && event.children.length > 0) {
@@ -116,7 +118,6 @@ export function sortEvents(events: NestedKBCalendarEvent[]): NestedKBCalendarEve
         return event;
     });
 }
-
 
 export function getDaysFromNow(time: string | Date, status: string): string {
     if (status === '完成') {
@@ -333,4 +334,21 @@ export function filterRecurringEvents(events: KBCalendarEvent[],
     });
 
     return filteredEvents;
+}
+
+export async function run_changepriority(Fr_event: NestedKBCalendarEvent, newPriority: string) {
+    if (!Fr_event.extendedProps.priorityid) {
+        showMessage("目标数据库未设置优先级列", -1, "error");
+        return false;
+    }
+    await api.updateAttrViewCell_pro(
+        Fr_event.publicId,
+        Fr_event.extendedProps.rootid,
+        Fr_event.extendedProps.priorityid,
+        [{ content: newPriority }],
+        "select"
+    );
+    api.handleDidaListEvent(Fr_event.extendedProps.rootid, Fr_event.publicId);
+    console.log("done-updateAttrViewCell_pro-select-priority");
+    return true;
 }
