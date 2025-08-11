@@ -66,9 +66,11 @@ export class M_calendar {
                 let calendar: Calendar
                 this.element.innerHTML = `
                 <div  id='calendarfu-${id}' ><div id='calendar-${id}' ></div></div>`;
-                let cleftbar = 'today,viewFilter,statsButton,prev,next';
+                let cleftbar = 'today,viewFilter,statsButton,refreshButton,prev,next';
+
                 if (this_settingdata["lifelog-enable"]) {
-                    cleftbar = 'today viewFilter lifelogToggle statsButton prev,next';
+                    cleftbar = 'today viewFilter lifelogToggle statsButton refreshButton,prev,next';
+
                 }
                 // calendar = await run(id, 'timeGridWeek', '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
                 calendar = await run(id, settingdata["cal-default-view"], '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
@@ -218,9 +220,9 @@ export class M_calendar {
                 <div id="calendar-${id}" class="cal-dock-container" ></div>
                 `;
                 setTimeout(async () => {
-                    let crightbar = 'today,prev,next';
+                    let crightbar = 'today,refreshButton,prev,next';
                     if (this_settingdata["lifelog-enable"]) {
-                        crightbar = 'today,lifelogToggle,prev,next';
+                        crightbar = 'today,lifelogToggle,refreshButton,prev,next';
                     }
                     D_calendar_day = await run(id, 'timeGridDay', '', 'title', crightbar, '');
                 }, 100);

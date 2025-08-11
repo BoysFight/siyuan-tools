@@ -506,6 +506,13 @@ export async function run(
                     await refreshKanban();
                 }
             },
+            refreshButton: {
+                text: '刷新',
+                click: async function () {
+                    await calendar.refetchEvents();
+                    await refreshKanban();
+                }
+            },
             // 统计功能按钮
             statsButton: {
                 text: '统计',
