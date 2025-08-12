@@ -403,7 +403,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
 
                 // 检查是否设置了开始时间
                 const hasStartTime = item['开始时间']?.start;
-                const startDate = hasStartTime 
+                const startDate = hasStartTime
                     ? new Date(parseInt(item['开始时间'].start))
                     : new Date(new Date().setHours(8, 0, 0, 0));
                 const endDate = item['开始时间']?.end ? new Date(parseInt(item['开始时间'].end)) : null;
@@ -412,7 +412,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                 // 1. 首先判断是否有开始时间，没有则直接为全天事件
                 // 2. 然后使用数据库中的全天设置
                 // 3. 最后按时间判断（0点为全天事件）
-                const isAllDay = !hasStartTime 
+                const isAllDay = !hasStartTime
                     ? true
                     : (item['全天']?.content !== undefined
                         ? item['全天'].content
@@ -466,7 +466,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
 
                     // 检查是否设置了开始时间
                     const hasStartTime = item['开始时间']?.start;
-                    const startDate = hasStartTime 
+                    const startDate = hasStartTime
                         ? new Date(parseInt(item['开始时间'].start))
                         : new Date(new Date().setHours(0, 0, 0, 0));
                     const endDate = item['开始时间']?.end ? new Date(parseInt(item['开始时间'].end)) : null;
@@ -734,93 +734,11 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         // 等待所有更新完成
         await Promise.all(updatePromises);
 
-        // 获取父级块ID
-        // 添加获取最近上级列表项块的辅助函数
-        async function findNearestParentListItemBlock(blockId: string): Promise<string | null> {
-            let currentBlock = await api.getBlockByID(blockId);
-
-            while (currentBlock && currentBlock.parent_id) {
-                const parentBlock = await api.getBlockByID(currentBlock.parent_id);
-                if (parentBlock && parentBlock.type === 'i') {  // 'i' 表示列表项块
-                    return parentBlock.id;
-                }
-                currentBlock = parentBlock;
-            }
-            return null;
-        }
-
-        // 获取最近的上级列表项块ID
-        const parentListItemId = await findNearestParentListItemBlock(direct.directid);
-
-        if (parentListItemId) {
-            const parentInDatabase = await checkBlockInEvent(parentListItemId, to_db_id);
-            if (parentInDatabase) {
-                // 获取关联列的ID
-                const relationKeyID = await getKeyIDfromViewValue(viewValue, "子级", to_db_id);
-                const parentListItemValue = await getBlockValuesFromViewValue(viewValue, parentListItemId, to_db_id);
-                const subItems = parentListItemValue.subItems
-
-                if (relationKeyID && subItems) {
-
-                    // 更新父事件的关联字段，保留原有关联
-                    await api.updateAttrViewCell_pro(
-                        parentListItemId,
-                        to_db_id,
-                        relationKeyID,
-                        {
-                            blockID: direct.directid,
-                            content: title,
-                            action: "add",
-                            oldrelation: {
-                                ids: subItems?.ids || [],
-                                contents: subItems?.contents || []
-                            }
-                        },
-                        "relation",
-                    )
-                }
-            }
-        }
+        // 处理父子关系
+        await updateParentChildRelation(direct.directid, to_db_id);
 
         // 获取当前文档所在的项目数据库中的项目ID
-        if (direct.directid) {
-            try {
-                // 获取当前文档的根文档ID
-                const block = await api.getBlockByID(direct.directid);
-                if (block && block.root_id) {
-                    try {
-                        const docBlock = await api.getBlockByID(block.root_id);
-                        const relationKeyID = await getKeyIDfromViewValue(viewValue, "项目", to_db_id);
-                        if (relationKeyID && docBlock.content &&
-                            (docBlock.content.startsWith('Epic') ||
-                             docBlock.content.startsWith('Feature') ||
-                             docBlock.content.startsWith('Story')) &&
-                            docBlock.ial.includes('custom-avs=')) {
-                            // 更新父事件的关联字段，保留原有关联
-                            await api.updateAttrViewCell_pro(
-                                direct.directid,
-                                to_db_id,
-                                relationKeyID,
-                                {
-                                    blockID: block.root_id,
-                                    content: docBlock.content,
-                                    action: "add",
-                                    oldrelation: {
-                                        ids: [],
-                                        contents: []
-                                    }
-                                },
-                                "relation",
-                            )
-                        }
-                    } catch (docError) {
-                        console.warn(`获取文档 ${block.root_id} 信息失败:`, docError);
-                    }
-                }
-            } catch (blockError) {
-                console.warn(`获取块 ${direct.directid} 信息失败:`, blockError);
-            }
-    }
+        await updateProjectRelation(direct.directid, to_db_id, viewValue);
         sy.showMessage('已添加事件', 2000, "info", "1");
         // 滴答更新
         api.handleDidaListEvent(to_db_id, direct.directid);
@@ -1107,6 +1025,234 @@ export async function checkBlockInEvent(blockId: string, to_db_id: string) {
     // console.log("Is block in the specified event database?", false);
     return false;
 }
+
+/**
+ * 更新父子关系 - 将子事件关联到父事件
+ * @param childBlockId 子块ID
+ * @param to_db_id 数据库ID
+ */
+export async function updateParentChildRelation(
+    childBlockId: string,
+    to_db_id: string
+) {
+    // 添加获取最近上级列表项块的辅助函数
+    async function findNearestParentListItemBlock(blockId: string): Promise<string | null> {
+        let currentBlock = await api.getBlockByID(blockId);
+
+        while (currentBlock && currentBlock.parent_id) {
+            const parentBlock = await api.getBlockByID(currentBlock.parent_id);
+            if (parentBlock && parentBlock.type === 'i') {  // 'i' 表示列表项块
+                return parentBlock.id;
+            }
+            currentBlock = parentBlock;
+        }
+        return null;
+    }
+
+    // 获取最近的上级列表项块ID
+    const parentListItemId = await findNearestParentListItemBlock(childBlockId);
+
+    if (parentListItemId) {
+        const parentInDatabase = await checkBlockInEvent(parentListItemId, to_db_id);
+        if (parentInDatabase) {
+            // 获取视图数据
+            const viewIds_Data = await getViewId([to_db_id]);
+            const viewValue = await getViewValue(viewIds_Data);
+
+            // 获取子块的标题
+            const childBlock = await api.getBlockByID(childBlockId);
+            const title = childBlock?.content || '';
+
+            // 获取关联列的ID
+            const relationKeyID = await getKeyIDfromViewValue(viewValue, "子级", to_db_id);
+            const parentListItemValue = await getBlockValuesFromViewValue(viewValue, parentListItemId, to_db_id);
+            const subItems = parentListItemValue.subItems
+
+            if (relationKeyID && subItems) {
+                // 更新父事件的关联字段，保留原有关联
+                await api.updateAttrViewCell_pro(
+                    parentListItemId,
+                    to_db_id,
+                    relationKeyID,
+                    {
+                        blockID: childBlockId,
+                        content: title,
+                        action: "add",
+                        oldrelation: {
+                            ids: subItems?.ids || [],
+                            contents: subItems?.contents || []
+                        }
+                    },
+                    "relation",
+                )
+            }
+        }
+    }
+}
+
+
+
+/**
+ * 更新项目关联 - 将事件关联到相关项目
+ * @param blockId 块ID
+ * @param to_db_id 数据库ID
+ * @param viewValue 视图数据
+ */
+export async function updateProjectRelation(
+    blockId: string,
+    to_db_id: string,
+    viewValue: any[]
+) {
+    try {
+        // 查找项目关联字段的keyID
+        const projectKeyID = await getKeyIDfromViewValue(viewValue, '项目', to_db_id);
+        if (!projectKeyID) {
+            console.warn('未找到项目字段');
+            return;
+        }
+
+        // 获取现有的项目关联数据
+        const existingProjectData = await getBlockValuesFromViewValue(viewValue, blockId, to_db_id);
+        const existingValues = existingProjectData?.项目 ? [existingProjectData.项目] : [];
+
+        // 预定义空关系返回值，避免重复创建
+        // 高效处理现有关系
+        const existingBlockIds = new Set(
+            (existingValues || []).flatMap(value => [
+                value.block?.id,
+                ...(value.relation?.blockIDs || [])
+            ]).filter(Boolean)
+        );
+
+        if (!blockId) {
+            console.warn('缺少必要参数 blockId');
+            return;
+        }
+
+        // 获取当前块内容并检查引用
+        const currentBlock = await api.getBlockByID(blockId);
+        if (!currentBlock?.markdown) {
+            return;
+        }
+
+        // 优化的正则表达式，一次性提取所有引用ID
+        const blockIdsToAdd = new Set();
+        const refRegex = /\(\(([\w-]+)\s+'[^']*'\)\)/g;
+        const refIds = [...currentBlock.markdown.matchAll(refRegex)].map(match => match[1]);
+
+        if (refIds.length > 0) {
+            // 批量获取所有引用块信息
+            const refBlocks = await Promise.all(
+                refIds.map(id => api.getBlockByID(id))
+            );
+
+            // 检查每个引用块
+            refBlocks.forEach((refBlock, index) => {
+                if (refBlock?.type === 'd' &&
+                    ['Epic-', 'Feature-', 'Story-'].some(prefix => refBlock.content.startsWith(prefix))) {
+                    blockIdsToAdd.add(refIds[index]);
+                }
+            });
+        }
+
+        // 递归获取父块引用
+        const checkParentBlockRefs = async (block) => {
+            if (!block?.parent_id) return null;
+
+            const parentBlock = await api.getBlockByID(block.parent_id);
+            if (!parentBlock) return null;
+
+            if (parentBlock.type === 'i' && parentBlock.markdown) {
+                const refMatches = [...(parentBlock.markdown.matchAll(/\(\(([\w-]+)\s+'[^']*'\)\)/g))]
+                    .map(match => match[1]);
+
+                if (refMatches.length > 0) {
+                    const refBlocks = await Promise.all(
+                        refMatches.map(id => api.getBlockByID(id))
+                    );
+
+                    const validRef = refBlocks.find((refBlock, index) =>
+                        refBlock?.type === 'd' &&
+                        ['Epic-', 'Feature-', 'Story-'].some(prefix =>
+                            refBlock.content.startsWith(prefix)
+                        )
+                    );
+
+                    if (validRef) {
+                        return refMatches[refBlocks.indexOf(validRef)];
+                    }
+                }
+            }
+            return checkParentBlockRefs(parentBlock);
+        };
+
+        const validParentRef = await checkParentBlockRefs(currentBlock);
+        if (validParentRef) {
+            blockIdsToAdd.add(validParentRef);
+        }
+
+        // 如果没有找到有效的引用，添加当前文档
+        if (blockIdsToAdd.size === 0) {
+            // 并行获取块信息和文档信息
+            const docId = currentBlock.root_id;
+            const docBlock = await api.getBlockByID(docId);
+            if (!docBlock) {
+                console.warn(`获取文档块失败 - docId: ${docId}`);
+                return;
+            }
+
+            // 验证文档标题
+            const docTitle = docBlock.content?.trim();
+            if (!docTitle) {
+                console.warn(`文档标题为空 - docId: ${docId}`);
+                return;
+            }
+
+            // 验证文档类型
+            if (!['Epic-', 'Feature-', 'Story-'].some(prefix => docTitle.startsWith(prefix))) {
+                console.info(`文档类型不符合要求 - title: ${docTitle}`);
+                return;
+            }
+
+            blockIdsToAdd.add(docId);
+        }
+
+        // 过滤掉已存在的项目关联
+        const newBlockIdsToAdd = [...blockIdsToAdd].filter(id => !existingBlockIds.has(id));
+
+        // 如果有新的项目关联需要添加
+        if (newBlockIdsToAdd.length > 0) {
+            // 逐个添加新的项目关联
+            for (const newBlockId of newBlockIdsToAdd) {
+                await api.updateAttrViewCell_pro(
+                    blockId,
+                    to_db_id,
+                    projectKeyID,
+                    {
+                        blockID: newBlockId as string,
+                        content: '',
+                        action: "add",
+                        oldrelation: {
+                            ids: [...existingBlockIds],
+                            contents: existingProjectData?.项目?.contents || []
+                        }
+                    },
+                    "relation"
+                );
+                // 更新已存在的ID集合，为下一次添加做准备
+                existingBlockIds.add(newBlockId);
+            }
+
+            console.info(`成功更新项目关联 - blockId: ${blockId}, 新增项目: ${newBlockIdsToAdd.join(', ')}`);
+        } else {
+            console.info(`未找到符合条件的项目关联 - blockId: ${blockId}`);
+        }
+
+    } catch (error) {
+        console.error('更新项目关联时发生错误:', error);
+    }
+}
+
 
 export async function updateEventInDatabase(
     info: any,

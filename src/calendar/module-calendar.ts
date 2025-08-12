@@ -73,7 +73,7 @@ export class M_calendar {
 
                 }
                 // calendar = await run(id, 'timeGridWeek', '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
-                calendar = await run(id, settingdata["cal-default-view"], '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban', 'title');
+                calendar = await run(id, settingdata["cal-default-view"], '', cleftbar, 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban,priorityQuadrant', 'title');
                 this.data.id = id;
                 calendarinstance.set(id, calendar);
             },
