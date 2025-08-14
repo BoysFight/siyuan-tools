@@ -1006,11 +1006,25 @@ async function refreshAttributeView(avID: string) {
     }
 }
 
+// 防抖计时器
+let didaEventDebounceTimer: NodeJS.Timeout;
+
 // 处理滴答清单事件
 export async function handleDidaListEvent(avID: string, blockId: string) {
     try {
-        // 触发思源同步
-        await sync();
+        // 清除之前的计时器
+        clearTimeout(didaEventDebounceTimer);
+
+        console.log('设置同步定时器，30秒后执行');
+        didaEventDebounceTimer = setTimeout(async () => {
+            try {
+                console.log('开始执行同步操作');
+                await sync();
+                console.log('同步操作执行完成');
+            } catch (error) {
+                console.error('同步操作失败:', error);
+            }
+        }, 30000);
 
         // 检查是否为滴答清单数据库
         const didaDbId = settingdata['cal-dida-db-id'];
@@ -1018,6 +1032,7 @@ export async function handleDidaListEvent(avID: string, blockId: string) {
             return; // 不是滴答清单数据库，无需处理
         }
         (window as any).Dida365Service?.handleSiyuanUpdate("force", blockId);
+
 
     } catch (error) {
         console.warn(`⚠️ [滴答清单] 处理滴答清单事件失败`, error);
