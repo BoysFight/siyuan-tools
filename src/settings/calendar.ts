@@ -60,6 +60,15 @@ export const calendarDefaults: Record<string, any> = {
     "cal-dida-db-id": "",
     "cal-dida-sync-mode": "auto",
     "cal-dida-sync-interval": 5,
+    // 我的滴答清单配置
+    "cal-mydida-enable": false,
+    "cal-dida-use-official-api": true,
+    "cal-dida-official-access-token": "",
+    "docker-sync-auto-trigger-dida": false,
+    "cal-dida-default-list-id": "",
+    "api-transaction-delay": 500,
+    "api-transaction-retry-count": 3,
+    "transaction-delay": 1000,
     // 分享 / 云
     "cal-s3-bucket": "",
     "cal-s3-accessKeyId": "",
@@ -204,6 +213,93 @@ export const calendarGroup = (ctx: BuildContext): SettingGroupDefinition => ({
                 { type: "textinput", title: "滴答清单同步数据库id", description: "对应数据库 id", key: "cal-dida-db-id", value: ctx.settings["cal-dida-db-id"] },
                 { type: "select", title: "滴答清单同步模式", description: "同步触发模式", key: "cal-dida-sync-mode", value: ctx.settings["cal-dida-sync-mode"], options: { auto: "自动同步", manual: "手动同步", all: "自动+手动" } },
                 { type: "number", title: "自动同步间隔", description: "分钟", key: "cal-dida-sync-interval", value: ctx.settings["cal-dida-sync-interval"] },
+            ]
+        },
+        {
+            name: "我的滴答清单",
+            items: [
+                {
+                    type: "checkbox",
+                    title: "启用滴答清单同步",
+                    description: "启用后开启将思源笔记的任务同步到滴答清单功能",
+                    key: "cal-mydida-enable",
+                    value: ctx.settings["cal-mydida-enable"],
+                },
+                {
+                    type: "textinput",
+                    title: "API访问令牌",
+                    description: "滴答清单的API访问令牌（可选，用于高级功能）",
+                    key: "cal-dida-official-access-token",
+                    value: ctx.settings["cal-dida-official-access-token"],
+                },
+                {
+                    type: "checkbox",
+                    title: "自动同步滴答清单",
+                    description: "同步触发后自动同步滴答清单",
+                    key: "docker-sync-auto-trigger-dida",
+                    value: ctx.settings["docker-sync-auto-trigger-dida"],
+                },
+                {
+                    type: "textinput",
+                    title: "默认任务列表ID",
+                    description: "滴答清单默认任务列表的ID",
+                    key: "cal-dida-default-list-id",
+                    value: ctx.settings["cal-dida-default-list-id"],
+                },
+                {
+                    type: "button",
+                    title: "测试连接",
+                    description: "测试滴答清单连接是否正常",
+                    key: "cal-dida-test",
+                    value: ctx.settings["cal-dida-test"],
+                    button: {
+                        label: "测试",
+                        callback: async () => {
+                            try {
+                                if (!ctx.moduleInstances["M_sync"]) {
+                                    showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
+                                    return;
+                                }
+                                if (!ctx.moduleInstances["M_calendar"]) {
+                                    showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
+                                    return;
+                                }
+                                showMessage("正在测试滴答清单连接，请稍候...");
+                                await ctx.moduleInstances["M_sync"].manualTestDidaProjectTasks();
+                            } catch (error) {
+                                console.error("测试连接失败:", error);
+                                showMessage(`测试连接失败: ${error.message}`, -1, "error");
+                            }
+                        },
+                    },
+                },
+                {
+                    type: "button",
+                    title: "立即同步",
+                    description: "立即执行一次同步操作",
+                    key: "cal-dida-sync-now",
+                    value: ctx.settings["cal-dida-sync-now"],
+                    button: {
+                        label: "同步",
+                        callback: async () => {
+                            try {
+                                if (!ctx.moduleInstances["M_sync"]) {
+                                    showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
+                                    return;
+                                }
+                                if (!ctx.moduleInstances["M_calendar"]) {
+                                    showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
+                                    return;
+                                }
+                                showMessage("正在同步到滴答清单，请稍候...");
+                                await ctx.moduleInstances["M_sync"].manualDidaSync();
+                            } catch (error) {
+                                console.error("同步失败:", error);
+                                showMessage(`同步失败: ${error.message}`, -1, "error");
+                            }
+                        },
+                    },
+                },
             ]
         },
     ]
