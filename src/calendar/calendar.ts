@@ -59,7 +59,7 @@ export async function run(
     id: string,
     initialView = 'dayGridMonth',
     S_viewID = "",
-    cleft = 'prev,next today viewFilter,statsButton',
+    cleft = 'prev,next today viewFilter,statsButton,refreshButton',
     cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban,priorityQuadrant',
     ccenter = 'title',
     elementca?: any,
