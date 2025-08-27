@@ -1,5 +1,10 @@
 import steveTools from "@/index";
-import { showMessage } from "siyuan";
+// import { IProtyle, showMessage } from "siyuan";
+// import { runWpsScriptSync } from "./wps_api";
+// import { appendBlock } from "@/api/api";
+import { WpsPicServ } from "./wps_serv/wps_pic_serv";
+import { WpsDataServ } from "./wps_serv/wps_data_serv";
+import { WpsFileServ } from "./wps_serv/wps_file_serv";
 
 // Wps 模块
 export class M_Wps {
@@ -9,17 +14,16 @@ export class M_Wps {
     }
 
     async init(settingdata: any) {
-        // 在这里编写初始化逻辑, 可使用 settingdata 访问设置项
         console.log("Wps 模块初始化");
-        // 示例: 根据设置添加一个顶部按钮
-        this.plugin.addTopBar({
-          icon: "iconInfo",
-          title: "Wps",
-          position: "left",
-          callback: () => { 
-            showMessage("WPS插件已启用");
-            console.log("Wps clicked"); }
-        });
+        if(settingdata["wps-pic-enable"]) {
+            new WpsPicServ(this.plugin).init(settingdata);
+        }
+        if(settingdata["wps-data-enable"]) {
+            new WpsDataServ(this.plugin).init(settingdata);
+        }
+        if(settingdata["wps-file-enable"]) {
+            new WpsFileServ(this.plugin).init(settingdata);
+        }
     }
 
     onunload() {

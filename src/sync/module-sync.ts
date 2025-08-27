@@ -123,7 +123,7 @@ export class M_sync {
     }
 
     async testSync() {
-        steveTools.outlog("测试同步...");
+        // steveTools.outlog("测试同步...");
         let res: any = await api.testSync(url, token);
         console.log("res: ", res);
         if (res) {

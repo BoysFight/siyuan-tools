@@ -258,7 +258,7 @@ export async function run(
             } else if (clicks1 === 2) {
                 clearTimeout(clickTimeout);
                 clicks1 = 0;
-                steveTools.outlog("创建事件", info);
+                // steveTools.outlog("创建事件", info);
                 const eventId = await myF.createEventInDatabase(info.dateStr, calendar, viewValue, rootid);
             }
         },
@@ -805,7 +805,7 @@ export async function run(
                     console.log('info.event.extendedProps:', info.event.extendedProps);
                 }
             }
-            // steveTools.outlog(info);
+            // // steveTools.outlog(info);
             if (info.event.extendedProps.source === 'qqcalendar') {
                 info.el.classList.add('qq-calendar-event');
                 // 添加QQ日历图标
