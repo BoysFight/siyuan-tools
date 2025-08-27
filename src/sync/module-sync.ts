@@ -22,14 +22,14 @@ export class M_sync {
 
     init = async (settingdata) => {
         this.settingdata = settingdata;
-        steveTools.outlog("同步模块初始化中...");
+        console.log("同步模块初始化中...");
 
         // 分别初始化docker感知和滴答清单同步
         await this.initDockerSync();
         await this.didaSyncInstance.init(settingdata);
         this.setupSyncListener(); // 改为调用通用监听器
 
-        steveTools.outlog("同步模块初始化完成");
+        console.log("同步模块初始化完成");
     }
 
     // 独立的docker感知同步初始化
@@ -38,7 +38,7 @@ export class M_sync {
         if (this.dockerSyncEnabled) {
             url = this.settingdata["sync-url"]; // 兼容旧配置
             token = this.settingdata["sync-token"]; // 兼容旧配置
-            steveTools.outlog("Docker感知同步已启用");
+            console.log("Docker感知同步已启用");
         }
     }
 
@@ -123,7 +123,7 @@ export class M_sync {
     }
 
     async testSync() {
-        // steveTools.outlog("测试同步...");
+        // console.log("测试同步...");
         let res: any = await api.testSync(url, token);
         console.log("res: ", res);
         if (res) {

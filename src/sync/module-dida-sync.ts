@@ -37,7 +37,7 @@ export class M_didaSync {
                     this.officialClient.setAccessToken(this.settingdata["cal-dida-official-access-token"]);
                 }
             }
-            steveTools.outlog("滴答清单同步已启用");
+            // steveTools.outlog("滴答清单同步已启用");
         }
     }
 
