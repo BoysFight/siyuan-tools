@@ -560,49 +560,58 @@ export async function showEvent(blockID, rootId?, isSeeMore = false, forceSeeMor
         });
 
     } else {
-        const dialog = new sy.Dialog({
-            title: `事件详情`,
-            content: '<div id="eventPanel-show"></div>',
-            width: '500px',
-            height: 'auto',
-            destroyCallback: async (option) => {
-                // console.log("ishandle",option?.ishandle)
-                if (option?.ishandle) {
-                } else {
-                    await refreshKanban();
-                }
-            },
-            hideCloseIcon: true,
-            // disableClose: true,
-        });
-        const eventPanel = document.getElementById('eventPanel-show');
-        new sy.Protyle(window.siyuan.ws.app, eventPanel, {
-            blockId: blockID,
-            rootId: blockID,
-            render: {
-                breadcrumb: false,
-            },
-            action: ["cb-get-focus",],
-            mode: "wysiwyg",
-            // action: ["cb-get-focus"],
-            after: () => {
-                if (seemore) {
-                    // console.log(panel.protyle);
-                    const parentElement = document.getElementById('eventPanel-show');
-                    // console.log("parentElement", parentElement);
-                    if (parentElement) {
-                        const targetElement = parentElement.querySelector('.popover__block') && parentElement.querySelector(`[data-av-id="${rootId}"]`);
-                        // const targetElement = parentElement.querySelector(`[data-av-id="${rootId}"]`);
-                        // console.log("找到目标元素:", targetElement);
-                        if (targetElement) {
-                            (targetElement as HTMLElement).click();
-                            dialog.destroy({ ishandle: "1" });
-                        }
-                    }
-                }
-            }
+        // const dialog = new sy.Dialog({
+        //     title: `事件详情`,
+        //     content: '<div id="eventPanel-show"></div>',
+        //     width: '500px',
+        //     height: 'auto',
+        //     destroyCallback: async (option) => {
+        //         // console.log("ishandle",option?.ishandle)
+        //         if (option?.ishandle) {
+        //         } else {
+        //             await refreshKanban();
+        //         }
+        //     },
+        //     hideCloseIcon: true,
+        //     // disableClose: true,
+        // });
+        // const eventPanel = document.getElementById('eventPanel-show');
+        // new sy.Protyle(window.siyuan.ws.app, eventPanel, {
+        //     blockId: blockID,
+        //     rootId: blockID,
+        //     render: {
+        //         breadcrumb: false,
+        //     },
+        //     action: ["cb-get-focus",],
+        //     mode: "wysiwyg",
+        //     // action: ["cb-get-focus"],
+        //     after: () => {
+        //         if (seemore) {
+        //             // console.log(panel.protyle);
+        //             const parentElement = document.getElementById('eventPanel-show');
+        //             // console.log("parentElement", parentElement);
+        //             if (parentElement) {
+        //                 const targetElement = parentElement.querySelector('.popover__block') && parentElement.querySelector(`[data-av-id="${rootId}"]`);
+        //                 // const targetElement = parentElement.querySelector(`[data-av-id="${rootId}"]`);
+        //                 // console.log("找到目标元素:", targetElement);
+        //                 if (targetElement) {
+        //                     (targetElement as HTMLElement).click();
+        //                     dialog.destroy({ ishandle: "1" });
+        //                 }
+        //             }
+        //         }
+        //     }
 
-        });
+        // });
+        const data = await api.getBlockAttrs(blockID);
+        sy.openAttributePanel({
+            data: data,
+            focusName: "av",
+            protyle: new sy.Protyle(window.siyuan.ws.app, document.createElement('div'), {
+                blockId: blockID,
+                rootId: blockID,
+            }).protyle,
+        })
     }
 }
 
@@ -665,7 +674,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         const ce = runblockdata_for_time(blockdata?.kramdown);
         const minsub = runblockdata_for_sub(blockdata?.kramdown);
         const categorie = runblockdata_for_category(blockdata?.kramdown);
-        const tags= runblockdata_for_tags(blockdata?.kramdown);
+        const tags = runblockdata_for_tags(blockdata?.kramdown);
         const note = runblockdata_for_note(blockdata?.kramdown);
         const title = runblockdata_for_title(blockdata?.kramdown);
         console.log("title:::", title);
