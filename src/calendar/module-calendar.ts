@@ -419,7 +419,7 @@ export class M_calendar {
                     // 查找名为“状态”的属性列 (key) 的定义
                     let statusKeyDefinition;
                     // console.log("avDetails.keyValues2121", avDetails[0].keyValues);
-                    if (avDetails && avDetails[0].keyValues) {
+                    if (avDetails && avDetails[0] && avDetails[0].keyValues) {
                         // console.log("avDetails.keyValues", avDetails[0].keyValues);
                         const statusKeyValue = avDetails[0].keyValues.find(kv => kv.key && kv.key.name === "状态");
                         // console.log("statusKeyValue", statusKeyValue);

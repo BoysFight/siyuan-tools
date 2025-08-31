@@ -271,6 +271,13 @@
             customAttrs: {},
             otherCols: [
                 {
+                    colName: '项目状态',
+                    // 对于绑定块，块/文档id === rowID
+                    getColValue: (keyID, rowID, cellID, avID) => {
+                        return {"mSelect": [{"content":"进行中"}]};
+                    },
+                },
+                {
                     colName: '父项目',
                     getColValue: async (keyID, rowID, cellID, avID, existingValues) => {
                         try {
@@ -602,6 +609,7 @@
         blockIds = typeof blockIds === 'string' ? [blockIds] : blockIds;
         const srcs = blockIds.map(blockId => ({
             "id": blockId,
+            "itemID": blockId,
             "isDetached": false,
         }));
         const input = {

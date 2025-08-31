@@ -251,7 +251,7 @@ function showMessage(message, isError = false, delay = 7000) {
                 try {
                     await fetchSyncPost('/api/av/addAttributeViewBlocks', {
                         avID: avID,
-                        srcs: [{ id: docId, isDetached: false }]
+                        srcs: [{ id: docId, itemID: docId, isDetached: false }]
                     });
                     processedNotes.add(docId);
                     console.log(`成功添加文档 ${docId} 到数据库 ${dbBlockId}`);

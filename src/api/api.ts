@@ -758,6 +758,7 @@ async function processAddBlockQueueForAvID(avID: string) {
         // 构建批量添加的数据
         const sources = blocks.map(block => ({
             id: block.id,
+            itemID: block.id,
             isDetached: false
         }));
 
