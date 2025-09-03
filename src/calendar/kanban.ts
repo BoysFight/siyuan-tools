@@ -140,6 +140,7 @@ const CustomViewConfig = {
                                     // 状态变化后更新父子关系
                                     await updateParentChildRelation(
                                         event.extendedProps.blockId,
+                                        event.extendedProps.itemID,
                                         event.extendedProps.rootid
                                     );
 
@@ -147,7 +148,7 @@ const CustomViewConfig = {
                                     const viewIDs = await getViewId(av_ids);
                                     const viewValue = await getViewValue(viewIDs);
                                     const to_db_id = event.extendedProps.rootid;
-                                    await updateProjectRelation(event.extendedProps.blockId, to_db_id, viewValue);
+                                    await updateProjectRelation(event.extendedProps.blockId, event.extendedProps.itemID, to_db_id, viewValue);
 
                                     await myK.run_changestatus(event, selectdata);
                                     console.log(`自动更新事件状态: ${event.title} -> ${newStatus}`);
@@ -757,6 +758,7 @@ async function handleStatusChange(Fr_event, parentEl) {
     // 状态变化后更新父子关系
     await updateParentChildRelation(
         Fr_event.extendedProps.blockId,
+        Fr_event.extendedProps.itemID,
         Fr_event.extendedProps.rootid
     );
 
@@ -764,7 +766,7 @@ async function handleStatusChange(Fr_event, parentEl) {
     const viewIDs = await getViewId(av_ids);
     const viewValue = await getViewValue(viewIDs);
     const to_db_id = Fr_event.extendedProps.rootid;
-    await updateProjectRelation(Fr_event.extendedProps.blockId, to_db_id, viewValue);
+    await updateProjectRelation(Fr_event.extendedProps.blockId, Fr_event.extendedProps.itemID, to_db_id, viewValue);
 
     logDebug(`${Fr_event.title} 状态更改为 ${newcategory}`);
 }

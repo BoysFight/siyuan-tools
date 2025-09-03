@@ -834,10 +834,10 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         await Promise.all(updatePromises);
 
         // 处理父子关系
-        await updateParentChildRelation(direct.directid, to_db_id);
+        await updateParentChildRelation(direct.directid, itemID, to_db_id);
 
         // 获取当前文档所在的项目数据库中的项目ID
-        await updateProjectRelation(direct.directid, to_db_id, viewValue);
+        await updateProjectRelation(direct.directid, itemID, to_db_id, viewValue);
         sy.showMessage('已添加事件', 2000, "info", "1");
         // 滴答更新
         api.handleDidaListEvent(to_db_id, direct.directid, itemID);
@@ -1129,11 +1129,13 @@ export async function checkBlockInEvent(blockId: string, to_db_id: string) {
 /**
  * 更新父子关系 - 将子事件关联到父事件
  * @param childBlockId 子块ID
+ * @param itemID 项目ID
  * @param to_db_id 数据库ID
  */
 export async function updateParentChildRelation(
     childBlockId: string,
-    to_db_id: string
+    itemID?: string,
+    to_db_id?: string
 ) {
     // 添加获取最近上级列表项块的辅助函数
     async function findNearestParentListItemBlock(blockId: string): Promise<string | null> {
@@ -1174,6 +1176,7 @@ export async function updateParentChildRelation(
                     parentListItemId,
                     to_db_id,
                     relationKeyID,
+                    itemID,
                     {
                         blockID: childBlockId,
                         content: title,
@@ -1195,13 +1198,15 @@ export async function updateParentChildRelation(
 /**
  * 更新项目关联 - 将事件关联到相关项目
  * @param blockId 块ID
+ * @param itemID 项目ID
  * @param to_db_id 数据库ID
  * @param viewValue 视图数据
  */
 export async function updateProjectRelation(
     blockId: string,
-    to_db_id: string,
-    viewValue: any[]
+    itemID?: string,
+    to_db_id?: string,
+    viewValue?: any[]
 ) {
     try {
         // 查找项目关联字段的keyID
@@ -1328,6 +1333,7 @@ export async function updateProjectRelation(
                     blockId,
                     to_db_id,
                     projectKeyID,
+                    itemID,
                     {
                         blockID: newBlockId as string,
                         content: '',
