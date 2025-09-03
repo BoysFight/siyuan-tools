@@ -50,16 +50,6 @@ export class M_sync {
                 if (msg.msg && msg.msg.startsWith('上传')) {
                     console.log("同步结束");
 
-                    // 如果当前不是主窗口（6806端口），跳过同步
-                    if (window.location.port !== '16806' && window.location.port !== '6806') {
-                        const currentPort = window.location.port;
-                        const reason = `当前端口 ${currentPort} 不是主窗口(6806Or16806)`;
-                        console.log(`[同步跳过] ${reason}`);
-                        showMessage(`同步操作已跳过：${reason}`, 3000);
-                        return;
-                    }
-                    console.log('[同步执行] 当前是主窗口且为最后编辑窗口，开始执行同步操作');
-
                     // 处理 Docker 同步
                     if (this.dockerSyncEnabled) {
                         const currentHost = window.location.host;
@@ -71,6 +61,17 @@ export class M_sync {
                             }, 1000);
                         }
                     }
+
+                    // 如果当前不是主窗口（6806端口），跳过同步
+                    if (window.location.port !== '16806' && window.location.port !== '6806') {
+                        const currentPort = window.location.port;
+                        const reason = `当前端口 ${currentPort} 不是主窗口(6806Or16806)`;
+                        console.log(`[同步跳过] ${reason}`);
+                        showMessage(`同步操作已跳过：${reason}`, 3000);
+                        return;
+                    }
+                    console.log('[同步执行] 当前是主窗口且为最后编辑窗口，开始执行同步操作');
+
 
                     // 处理滴答清单同步
                     if (this.didaSyncInstance["mydidaSyncEnabled"] &&
