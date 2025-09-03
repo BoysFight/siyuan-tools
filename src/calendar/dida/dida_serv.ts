@@ -3,10 +3,11 @@ import { Dida365ApiClient } from "./dida_api";
 import { Project, Task } from "./dida_interface";
 import steveTools, { settingdata } from "@/index";
 import { getViewId, getViewValue } from "../myF";
-import { addBlockToDatabase_pro, appendBlock, createDailyNote, generateSiyuanID, setBlockAttrs, showStatusMessage, updateAttrViewCell_pro, updatemainkey } from "@/api/api";
+import { addBlockToDatabase_pro, appendBlock, createDailyNote, generateSiyuanID, getAttributeViewBoundBlockIDsByItemIDs, getAttributeViewItemIDsByBoundIDs, setBlockAttrs, showStatusMessage, updateAttrViewCell_pro, updatemainkey } from "@/api/api";
 import { formatDateToISO, formatLocalDate } from "./siyuan_api";
 import { createDidaDock, DidaLinkInterceptor } from "@/api/dockdida_pro";
 import * as ic from "@/icon"
+import { extractNewAvId } from "@/api/api3";
 export class Dida365Service {
     private apiClient: Dida365ApiClient;
     private plugin: steveTools;
@@ -142,7 +143,7 @@ export class Dida365Service {
     /**
      * 防抖同步方法：等待10秒，如果期间有新的调用则重新计时
      */
-    private debouncedSyncTasksToSiyuan(): void {
+    private debouncedSyncTasksToSiyuan(delay = 10000): void {
         // 清除之前的计时器
         if (this.syncDebounceTimer) {
             clearTimeout(this.syncDebounceTimer);
@@ -156,16 +157,18 @@ export class Dida365Service {
                 console.log("防抖等待完成，开始执行同步任务到思源");
                 isUpdate = await this.syncTasksToSiyuan();
                 this.syncDebounceTimer = null; // 清空计时器引用
-                if (isUpdate) {
+                if (isUpdate && delay === 10000) {
                     showMessage("滴答任务同步不一致", 2000, "info", "dida-sync");
+                }else if (isUpdate && delay === 3000) {
+                    showMessage("滴答同步完成", 2000, "info", "dida-sync");
                 }
             } catch (error) {
                 console.error("防抖同步执行失败:", error);
                 this.syncDebounceTimer = null; // 清空计时器引用
             }
-        }, 10000); // 10秒延迟
+        }, delay); // 10秒延迟
 
-        console.log("设置防抖同步计时器，将在10秒后执行（如无新的调用）");
+        console.log(`设置防抖同步计时器，将在${delay / 1000}秒后执行（如无新的调用）`);
     }
 
     async syncTasksToSiyuan(): Promise<boolean> {
@@ -478,7 +481,7 @@ export class Dida365Service {
 
             // 创建一个新的块
             const blockId = await generateSiyuanID() as string;
-
+            const itemID = await generateSiyuanID() as string;
             // 根据配置确定创建位置
             let targetId;
             if (settingdata["cal-create-for-date"]) {
@@ -517,13 +520,13 @@ ${taskData.描述?.content || "描述：暂无"}
             );
 
             // 添加到数据库
-            await addBlockToDatabase_pro(blockId, this.avId);
+            await addBlockToDatabase_pro(blockId, this.avId, itemID);
 
             // 获取 viewValue 用于获取 keyID
             const viewValue = await this.getAvViewData("创建思源任务");
 
             // 更新各个字段
-            await this.updateTaskFields(blockId, taskData, viewValue);
+            await this.updateTaskFields(blockId, taskData, viewValue, itemID);
 
             // 同步更新滴答清单任务，为其添加 S 链接
             if (taskData.didaID?.content) {
@@ -571,12 +574,12 @@ ${taskData.描述?.content || "描述：暂无"}
             }
 
             const blockId = existingTask.事件.id;
-
+            const itemID = existingTask.事件.itemID;
             // 获取 viewValue 用于获取 keyID
             const viewValue = await this.getAvViewData("更新思源任务");
 
             // 更新各个字段
-            await this.updateTaskFields(blockId, newTaskData, viewValue, existingTask);
+            await this.updateTaskFields(blockId, newTaskData, viewValue, itemID, existingTask);
 
             // 更新块的自定义属性（状态）
             const statusCustomAttr = newTaskData.状态?.content === "完成" ? "done" : "todo";
@@ -658,7 +661,7 @@ ${taskData.描述?.content || "描述：暂无"}
                 }
 
                 const blockId = task.事件.id;
-
+                const itemID = task.事件.itemID;
                 // 更新状态为"归档"
                 const statusData = [{ content: "归档" }];
                 updatePromises.push(
@@ -666,6 +669,7 @@ ${taskData.描述?.content || "描述：暂无"}
                         blockId,
                         this.avId,
                         statusKeyID,
+                        itemID,
                         statusData,
                         "select"
                     ).then(() => {
@@ -704,7 +708,7 @@ ${taskData.描述?.content || "描述：暂无"}
     /**
      * 更新任务字段的通用方法
      */
-    private async updateTaskFields(blockId: string, taskData: any, viewValue: any, existingTask?: any): Promise<void> {
+    private async updateTaskFields(blockId: string, taskData: any, viewValue: any, itemID: string, existingTask?: any): Promise<void> {
         try {
             // 获取各字段的 keyID
             const didaIdKeyID = await this.getKeyIDfromViewValue(viewValue, 'didaID');
@@ -725,6 +729,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     didaIdKeyID,
+                    itemID,
                     taskData.didaID.content,
                     "text"
                 ));
@@ -737,6 +742,7 @@ ${taskData.描述?.content || "描述：暂无"}
                 updatePromises.push(updatemainkey({
                     avID: this.avId,
                     blockID: blockId,
+                    itemID: itemID,
                     keyID: eventKeyID,
                     content: newEventTitle, // 存储不含链接的标题
                 }));
@@ -757,6 +763,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     timeKeyID,
+                    itemID,
                     startTime,
                     "date",
                     endTime
@@ -770,6 +777,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     priorityKeyID,
+                    itemID,
                     priorityData,
                     "select"
                 ));
@@ -782,6 +790,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     statusKeyID,
+                    itemID,
                     statusData,
                     "select"
                 ));
@@ -796,6 +805,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     tagKeyID,
+                    itemID,
                     taskData.标签.content,
                     "mSelect"
                 ));
@@ -807,6 +817,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     descKeyID,
+                    itemID,
                     taskData.描述.content,
                     "text"
                 ));
@@ -819,6 +830,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     blockId,
                     this.avId,
                     urlKeyID,
+                    itemID,
                     taskData.链接.content,
                     "url"
                 ));
@@ -891,8 +903,9 @@ ${taskData.描述?.content || "描述：暂无"}
      * 处理来自思源 WebSocket 的消息，判断是否需要更新滴答任务。
      * 增加强制刷新逻辑
      */
-    handleSiyuanUpdate = async (e: any, blockId = '') => {
-        if (e == 'force' && blockId) {
+    handleSiyuanUpdate = async (e: any, blockId = '', itemID = '') => {
+        let isDetached: boolean;
+        if (e == 'force' && blockId && itemID) {
             console.log("fore滴答更新");
         } else {
             const msg = e.detail;
@@ -902,23 +915,41 @@ ${taskData.描述?.content || "描述：暂无"}
                 return;
             }
             // 检查是否是我们正在监听的数据库
-            // console.log("处理思源更新DDD：avID", operation.avID, this.avId);
-            if (operation.avID !== this.avId) {
+            console.log("处理思源更新DDD🚧🚧", operation);
+            // Calculate the newly added avID by comparing old and new custom-avs
+
+
+            const avID = operation.avID || extractNewAvId(operation?.data?.old?.['custom-avs'], operation?.data?.new?.['custom-avs']);
+            console.log("获取到的🚧🚧 avID:", avID);
+            if (avID !== this.avId) {
                 return;
             }
+
             if (operation.action === "insertAttrViewBlock") {//TODO: 暂不支持批量添加情况
                 blockId = operation.srcs[0].id;
+                isDetached = operation.srcs[0].isDetached;
+                itemID = operation.srcs[0].itemID;
             } else {
-                blockId = operation.rowID;
+                if (operation.rowID) {
+                    itemID = operation.rowID;
+                    blockId = await getAttributeViewBoundBlockIDsByItemIDs(avID, [operation.rowID]).then(data => data[operation.rowID]);
+                } else if (operation.id) {
+                    blockId = operation.id;
+                    itemID = await getAttributeViewItemIDsByBoundIDs(avID, [operation.id]).then(data => data[operation.id]);
+                }
+                console.log("🚧🚧: blockId", blockId);
+                console.log("🚧🚧: itemID", itemID);
             }
         }
+        // return;
+        if (isDetached) return;//游离块不支持添加到滴答,后续操作需要绑定块ID
         if (!blockId) return;
         try {
             // 1. 获取这一行（块）的完整数据，最重要的是拿到 didaID
             console.log(`处理思源更新：块ID ${blockId}`);
             const viewData = await this.getAvViewData("处理思源更新");
             const allTasks = viewData.flatMap(view => view.data || []);
-            const siyuanTask = allTasks.find((task: any) => task.事件?.id === blockId);
+            const siyuanTask = allTasks.find((task: any) => task.事件?.itemID === itemID);
 
             if (!siyuanTask) {
                 return;
@@ -1014,12 +1045,7 @@ ${taskData.描述?.content || "描述：暂无"}
 
                     // 确定目标清单，如果状态未定，则默认为未完成清单
                     // 2025/7/5 修改：根据状态标签来确定目标清单，不再设置多个清单了
-                    let targetProjectId = this.todoListId
-                    // if (!targetProjectId) {
-                    //     console.warn("无法根据状态确定目标清单，将默认使用未完成清单。");
-                    //     targetProjectId = this.todoListId;
-                    // }
-
+                    let targetProjectId = this.todoListId;
                     // 如果连默认的未完成清单ID都没有设置，则无法继续
                     if (!targetProjectId) {
                         showMessage("无法创建任务：未设置默认的未完成清单ID。", -1, "error");
@@ -1057,7 +1083,7 @@ ${taskData.描述?.content || "描述：暂无"}
 
                         // 回写 didaID
                         if (didaIdKeyID) {
-                            updatePromises.push(updateAttrViewCell_pro(blockId, this.avId, didaIdKeyID, newDidaTask.id, "text"));
+                            updatePromises.push(updateAttrViewCell_pro(blockId, this.avId, didaIdKeyID, itemID, newDidaTask.id, "text"));
                         } else {
                             console.error("无法找到 'didaID' 字段的 KeyID，无法写回滴答任务ID。");
                         }
@@ -1065,7 +1091,7 @@ ${taskData.描述?.content || "描述：暂无"}
                         // 回写链接字段
                         if (linkKeyID) {
                             const didaLink = `https://dida365.com/webapp/#p/${targetProjectId}/tasks/${newDidaTask.id}`;
-                            updatePromises.push(updateAttrViewCell_pro(blockId, this.avId, linkKeyID, didaLink, "url"));
+                            updatePromises.push(updateAttrViewCell_pro(blockId, this.avId, linkKeyID, itemID, didaLink, "url"));
                         } else {
                             console.error("无法找到 '链接' 字段的 KeyID，无法写回滴答任务链接。");
                         }
@@ -1087,7 +1113,7 @@ ${taskData.描述?.content || "描述：暂无"}
                     }, 2000);
                 }
             }
-            this.debouncedSyncTasksToSiyuan(); // 防抖同步检测：等待10秒，期间如有新调用则重新计时
+            this.debouncedSyncTasksToSiyuan(3000); // 防抖同步检测
         } catch (error) {
             console.error("从思源同步到滴答失败:", error);
         }

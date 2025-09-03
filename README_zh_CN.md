@@ -10,7 +10,6 @@ STEVETOOLS
 `<所有功能模块开源>`  
 有个人需求：有技术，自己拉源码，自己改; 没技术，自己拉源码让ai改。
 
-
 （注：由于是自用工具插件，可能会有一些不完善的地方，甚至出现数据遗失！！（因为使用了思源数据操作相关的api），请自行测试无问题的情况下再使用，若在使用过程中出现问题，请及时反馈）   
 ### 若介意请勿使用。
 
@@ -32,14 +31,15 @@ win端s3同步后，docker端感知s3同步。
 模仿AFFINE，深度绑定思源的tldraw白板，支持嵌入思源块和链接跳转
 6. Lifelog：（开源替代，如需更好体验请使用[叶归插件](https://simplest-frontend.feishu.cn/docx/B3NndXHi7oLLXJxnxQmcczRsnse)）  
 用法基本和叶归插件一样，由[BoysFight](https://github.com/BoysFight) PR实现。  
-7. WPS联动：方便在思源中使用WPS（office文件嵌入，预览、编辑、同步），多维表格数据导入，图片上传。
+7. WPS联动：
+方便在思源中使用WPS（office文件嵌入，预览、编辑、同步），多维表格数据导入，图片上传。
 
 #### 开发动力来源[打赏](https://pic.imgdb.cn/item/6751b929d0e0a243d4de55a7.png) [star](https://github.com/loonghfut/siyuan-steve-tools) 
 
 #### 更新日志:
 
 
-### v0.13.3 (2025年08月27日)
+### v0.13.6 (2025年08月31日)
 - 优化功能图标显示 (loonghfut)
 - 优化不必要变量 (loonghfut)
 - feat: 添加WPS数据导入功能准备及相关图标支持 (loonghfut)
@@ -78,6 +78,27 @@ win端s3同步后，docker端感知s3同步。
 - 优化wps插入块默认模板 (loonghfut)
 - feat: Ai侧边栏改用 webview dock 替代 iframe dock，支持更多特性与注入能力 (loonghfut)
 - chore: 更新版本号至 0.13.3 (loonghfut)
+- docs: 更新 v0.13.3 版本的更新日志 (loonghfut)
+- https://github.com/siyuan-note/siyuan/issues/15336 (loonghfut)
+- fix: 添加可选链以防止 WPS 文件未加载时的错误 (loonghfut)
+- fix: 更新README，添加思源3.3.0之后版本日程管理功能不兼容的提示 (loonghfut)
+- fix: 更新版本号至 0.13.4，并修改日程管理名称以增强可识别性 (loonghfut)
+- docs: 更新 v0.13.4 版本的更新日志 (loonghfut)
+- 兼容思源3.3.0数据库结构 (loonghfut)
+- fix: 尝试修复 (loonghfut)
+- 更新到思源3.3.0版本好像看板啥的不同拖拽更新状态了？ Fixes #94 更新到思源3.3.0以后，又更新到最新的插件版本，日程添加后，时间 分类信息都不见了 Fixes #95 (loonghfut)
+- fix: 更新版本号至 0.13.5，并将最低应用版本更新至 3.3.1 (loonghfut)
+- docs: 更新 v0.13.5 版本的更新日志 (loonghfut)
+- 重构日程模块ics生成部分 (loonghfut)
+- 取消模板生成 (loonghfut)
+- 删除部分无用代码 (loonghfut)
+- feat: 重构QQ日历事件更新逻辑，迁移至CalDAVClient并优化事件缓存 (loonghfut)
+- feat: 添加批量替换属性视图主键块的功能，更新AVManager和相关接口 (loonghfut)
+- feat: 添加获取属性视图绑定块ID映射的功能，优化AVManager和Dida365Service中的相关逻辑https://github.com/siyuan-note/siyuan/issues/15708 https://github.com/loonghfut/siyuan-steve-tools/issues/94 (loonghfut)
+- 滴答同步，支撑绑定块时触发 (loonghfut)
+- 优化绑定块时触发同步体验 (loonghfut)
+- feat: 优化数据提取逻辑，支持分组看板和表格视图的兼容处理 (loonghfut)
+- feat: 更新版本号至0.13.6，优化日程管理设置名称 (loonghfut)
 
 
 更多详见[提交记录](https://github.com/loonghfut/siyuan-steve-tools/commits/main-2/)

@@ -18,6 +18,7 @@ const cellUpdateQueue: Array<{
     id: string;
     avID: string;
     keyID: string;
+    itemID: string;
     keyName?: string;
     value: any;
     type: string;
@@ -30,6 +31,7 @@ const cellUpdateQueue: Array<{
 const addBlockQueue: Map<string, Array<{
     id: string;
     avID: string;
+    itemID: string;
     resolve: (value: any) => void;
     reject: (reason: any) => void;
 }>> = new Map();
@@ -57,6 +59,7 @@ export async function lsNotebooks(): Promise<IReslsNotebooks> {
     let url = '/api/notebook/lsNotebooks';
     return request(url, '');
 }
+
 
 
 export async function openNotebook(notebook: NotebookId) {
@@ -335,6 +338,33 @@ export async function getAttributeViewKeysByAvID(avid: BlockId) {
         avID: avid
     }
     const url = '/api/av/getAttributeViewKeysByAvID';
+    return request(url, data);
+}
+
+/**
+ * 获取指定属性视图中一组项目 (itemIDs) 绑定的块 ID 映射。
+ * 空字符串表示对应 item 尚未绑定块。
+ * 封装 /api/av/getAttributeViewBoundBlockIDsByItemIDs
+ * @param avID 属性视图 ID
+ * @param itemIDs 项目 ID 数组
+ * @returns 形如 { itemID: blockID | "" } 的映射对象
+ */
+export async function getAttributeViewBoundBlockIDsByItemIDs(avID: string, itemIDs: string[]): Promise<Record<string, string>> {
+    const data = { avID, itemIDs };
+    const url = '/api/av/getAttributeViewBoundBlockIDsByItemIDs';
+    return request(url, data);
+}
+
+/**
+ * 根据一组已绑定的块 ID 获取其对应的属性视图项目 itemID 映射。
+ * 封装 /api/av/getAttributeViewItemIDsByBoundIDs
+ * @param avID 属性视图 ID
+ * @param blockIDs 块 ID 数组
+ * @returns 形如 { blockID: itemID } 的映射对象
+ */
+export async function getAttributeViewItemIDsByBoundIDs(avID: string, blockIDs: string[]): Promise<Record<string, string>> {
+    const data = { avID, blockIDs };
+    const url = '/api/av/getAttributeViewItemIDsByBoundIDs';
     return request(url, data);
 }
 
@@ -717,7 +747,7 @@ export async function addBlockToDatabase(id: string, databaseId: string) {
 }
 
 
-export async function addBlockToDatabase_pro(id: string, avID: string): Promise<any> {
+export async function addBlockToDatabase_pro(id: string, avID: string, itemID: string): Promise<any> {
     return new Promise((resolve, reject) => {
         // 按 avID 分组添加到队列中
         if (!addBlockQueue.has(avID)) {
@@ -727,6 +757,7 @@ export async function addBlockToDatabase_pro(id: string, avID: string): Promise<
         addBlockQueue.get(avID)!.push({
             id,
             avID,
+            itemID,
             resolve,
             reject
         });
@@ -758,8 +789,8 @@ async function processAddBlockQueueForAvID(avID: string) {
         // 构建批量添加的数据
         const sources = blocks.map(block => ({
             id: block.id,
-            itemID: block.id,
-            isDetached: false
+            isDetached: false,
+            itemID: block.itemID || this.generateId()
         }));
 
         // 使用批量API添加所有块
@@ -787,6 +818,7 @@ interface UpdateMainKeyParams {
     keyID: string;
     content: string;
     blockID: string;
+    itemID: string;
 }
 
 // Modify the function to accept an object parameter
@@ -795,12 +827,12 @@ export async function updatemainkey(params: UpdateMainKeyParams): Promise<any> {
         const delay = settingdata['transaction-delay'] || 1000;
         setTimeout(async () => {
             try {
-                const { avID, keyID, content, blockID } = params; // Destructure the parameters
+                const { avID, keyID, content, blockID, itemID } = params; // Destructure the parameters
                 const url = '/api/av/setAttributeViewBlockAttr';
                 const payload = {
                     avID: avID,
                     keyID: keyID,
-                    rowID: blockID,
+                    rowID: itemID,
                     value: {
                         block: {
                             content: content,
@@ -824,6 +856,7 @@ export async function updateAttrViewCell_pro(
     id: string,
     avID: string,
     keyID: string,
+    itemID: string,
     value: string | Date | ISelectOption[] | boolean | {
         blockID: string,
         content: string,
@@ -842,6 +875,7 @@ export async function updateAttrViewCell_pro(
             id,
             avID,
             keyID,
+            itemID,
             value,
             type,
             endtime,
@@ -939,25 +973,26 @@ async function processQueue() {
             );
 
             // 构建批量更新数据
+
             const batchUpdates = processedUpdates
                 .filter(update => update.keyName) // 只处理有效的键名
                 .map(update => ({
                     keyName: update.keyName!,
-                    rowID: update.id,
+                    rowID: update.itemID,
                     value: update.processedValue
                 }));
 
             if (batchUpdates.length > 0) {
                 // 使用批量API更新单元格
+                console.log(`🔄 [批量更新单元格] 发送批量更新请求，avID: ${avID}`, batchUpdates);
                 const result = await avManager.batchUpdateCells(avID, batchUpdates);
 
                 // 成功后解析所有Promise
                 updates.forEach(update => update.resolve(result));
 
                 console.log(`✅ [批量更新单元格] 成功更新 ${batchUpdates.length} 个单元格，avID: ${avID}`);
-                const blockId = updates[0].id;
                 // 批量更新完成后的后续处理
-                await handlePostBatchUpdateActions(avID, updates, blockId);
+                await handlePostBatchUpdateActions(avID);
             } else {
                 // 如果没有有效更新，拒绝所有Promise
                 updates.forEach(update => update.reject(new Error('Invalid keyName for update')));
@@ -983,7 +1018,7 @@ async function processQueue() {
 }
 
 // 处理批量更新完成后的后续操作
-async function handlePostBatchUpdateActions(avID: string, updates: Array<any>, blockId: string) {
+async function handlePostBatchUpdateActions(avID: string) {
     try {
         // 1. 触发视图刷新
         await refreshAttributeView(avID);
@@ -1011,7 +1046,7 @@ async function refreshAttributeView(avID: string) {
 let didaEventDebounceTimer: NodeJS.Timeout;
 
 // 处理滴答清单事件
-export async function handleDidaListEvent(avID: string, blockId: string) {
+export async function handleDidaListEvent(avID: string, blockId: string, itemID: string) {
     try {
         // 清除之前的计时器
         clearTimeout(didaEventDebounceTimer);
@@ -1032,7 +1067,7 @@ export async function handleDidaListEvent(avID: string, blockId: string) {
         if (!didaDbId || avID !== didaDbId) {
             return; // 不是滴答清单数据库，无需处理
         }
-        (window as any).Dida365Service?.handleSiyuanUpdate("force", blockId);
+        (window as any).Dida365Service?.handleSiyuanUpdate("force", blockId, itemID);
 
 
     } catch (error) {
@@ -1289,4 +1324,14 @@ export async function addAttributeViewKey(
         keyType: keyType as any,
         previousKeyName
     });
+}
+
+/**
+ * 批量替换属性视图中的块 (封装 /api/av/batchReplaceAttributeViewBlocks)
+ * @param avID 属性视图 ID
+ * @param mappings 旧块 -> 新块 映射数组，如 [{"oldID":"newID"}, {"oldID2":"newID2"}]
+ * @param isDetached 是否游离块 (默认 false)
+ */
+export async function batchReplaceAttributeViewBlocks(avID: string, mappings: Array<Record<string, string>>, isDetached: boolean = false): Promise<void> {
+    return avManager.batchReplaceBlocks(avID, mappings, isDetached);
 }
