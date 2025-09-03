@@ -664,11 +664,11 @@ export async function run(
 
                 // 3. 获取视图数据
                 viewValue_zq = await myF.getViewValue(viewIDs_zq, true);
-                viewValue = await myF.getViewValue(viewIDs);
+                
+                // 3.5 先筛选 viewIDs，再获取视图数据
+                const filteredViewIDs = viewIDs.filter(item => filterViewId.includes(item.viewId));
+                viewValue = await myF.getViewValue(filteredViewIDs.length > 0 ? filteredViewIDs : viewIDs);
                 // console.log("View data:", viewValue, "周期", viewValue_zq);
-
-                // 3.5 增加筛选函数
-                viewValue = await myF.filterViewValue(viewValue, filterViewId);
 
                 // 4. 转换事件数据
                 const events = await myF.convertToFullCalendarEvents(viewValue, viewValue_zq);

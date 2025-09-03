@@ -136,7 +136,22 @@ export async function getViewId(va_ids: string[], filterName: string = ""): View
 }
 
 //获取视图值
+// 缓存实现
+const viewValueCache = new Map<string, {data: any[], timestamp: number}>();
+const CACHE_TIMEOUT = 5 * 1000; // 缓存有效期5秒
+
 export async function getViewValue(viewIds_Data: ViewItem[], isZQ = false, type = "normal") {
+    // 生成缓存键
+    const cacheKey = JSON.stringify({viewIds: viewIds_Data.map(v => v.viewId), isZQ, type});
+    const now = Date.now();
+
+    // 检查缓存是否有效
+    const cached = viewValueCache.get(cacheKey);
+    if (cached && (now - cached.timestamp) < CACHE_TIMEOUT) {
+        console.log("使用缓存的视图数据");
+        return cached.data;
+    }
+
     const viewValue_Data = [];
 
     for (const viewId_Data of viewIds_Data) {
@@ -158,6 +173,12 @@ export async function getViewValue(viewIds_Data: ViewItem[], isZQ = false, type 
     }
 
     // console.log("ceshi2222:::::::::::::2", viewValue_Data);
+    // 更新缓存
+    viewValueCache.set(cacheKey, {
+        data: viewValue_Data,
+        timestamp: now
+    });
+
     return viewValue_Data;
 }
 
@@ -1152,10 +1173,10 @@ export async function updateParentChildRelation(
     }
 
     // 获取最近的上级列表项块ID
-    const parentListItemId = await findNearestParentListItemBlock(childBlockId);
+    const parentListBlockId = await findNearestParentListItemBlock(childBlockId);
 
-    if (parentListItemId) {
-        const parentInDatabase = await checkBlockInEvent(parentListItemId, to_db_id);
+    if (parentListBlockId) {
+        const parentInDatabase = await checkBlockInEvent(parentListBlockId, to_db_id);
         if (parentInDatabase) {
             // 获取视图数据
             const viewIds_Data = await getViewId([to_db_id]);
@@ -1167,16 +1188,17 @@ export async function updateParentChildRelation(
 
             // 获取关联列的ID
             const relationKeyID = await getKeyIDfromViewValue(viewValue, "子级", to_db_id);
-            const parentListItemValue = await getBlockValuesFromViewValue(viewValue, parentListItemId, to_db_id);
+            const parentListItemValue = await getBlockValuesFromViewValue(viewValue, parentListBlockId, to_db_id);
             const subItems = parentListItemValue.subItems
+            const parentListBlockItemID = parentListItemValue.event.itemID
 
             if (relationKeyID && subItems) {
                 // 更新父事件的关联字段，保留原有关联
                 await api.updateAttrViewCell_pro(
-                    parentListItemId,
+                    parentListBlockId,
                     to_db_id,
                     relationKeyID,
-                    itemID,
+                    parentListBlockItemID,
                     {
                         blockID: childBlockId,
                         content: title,

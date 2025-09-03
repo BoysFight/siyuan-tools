@@ -42,7 +42,7 @@ export class M_didaSync {
     }
 
     // 添加更新思源数据库的辅助方法
-    private async updateSiyuanDatabase(event: any, blockId: string, rootId: string, updatedTask: any) {
+    private async updateSiyuanDatabase(event: any, blockId: string, itemID: string, rootId: string, updatedTask: any) {
         const updates = [];
 
         // 检查描述变化
@@ -51,6 +51,7 @@ export class M_didaSync {
                 blockId,
                 rootId,
                 event.描述.keyID,
+                itemID,
                 updatedTask.content,
                 "text"
             ));
@@ -62,6 +63,7 @@ export class M_didaSync {
                 blockId,
                 rootId,
                 event.开始时间.keyID,
+                itemID,
                 updatedTask.startDate,
                 "date",
                 updatedTask.dueDate,
@@ -81,6 +83,7 @@ export class M_didaSync {
                 blockId,
                 rootId,
                 event.优先级.keyID,
+                itemID,
                 selectdata,
                 "select"
             ));
@@ -95,6 +98,7 @@ export class M_didaSync {
                 blockId,
                 rootId,
                 event.状态.keyID,
+                itemID,
                 selectdata,
                 "select"
             ));
@@ -107,6 +111,7 @@ export class M_didaSync {
                 blockId,
                 rootId,
                 event.分类.keyID,
+                itemID,
                 selectdata,
                 "select"
             ));
@@ -118,6 +123,7 @@ export class M_didaSync {
                 blockId,
                 rootId,
                 event.全天.keyID,
+                itemID,
                 updatedTask.isAllDay,
                 "checkbox"
             ));
@@ -175,6 +181,7 @@ export class M_didaSync {
                 // 4. 遍历每个事件
                 for (const event of eventGroup.data) {
                     const blockId = event?.事件?.id;
+                    const itemID = event?.事件?.itemID;
                     if (!blockId) continue;
 
                     const startDate = this.formatDateToISO(event?.开始时间?.start);
@@ -240,6 +247,7 @@ export class M_didaSync {
                             allSiyuanCompletedTaskIds.get(projectId).add(didaTaskId);
                             completedTasksBlockInfo.set(didaTaskId, {
                                 blockId: blockId,
+                                itemID: itemID,
                                 rootId: eventGroup.from.rootid,
                                 event: event,
                                 taskData: taskData,
@@ -321,6 +329,7 @@ export class M_didaSync {
                                 tasksToSyncToSiyuan.get(projectId).set(didaTaskId, {
                                     event,
                                     blockId,
+                                    itemID,
                                     rootId: eventGroup.from.rootid,
                                     task: findDidaTaskDataInDida // 直接保存任务数据，避免再次请求
                                 });
@@ -333,6 +342,7 @@ export class M_didaSync {
                             tasksToSyncToSiyuan.get(projectId).set(didaTaskId, {
                                 event,
                                 blockId,
+                                itemID,
                                 rootId: eventGroup.from.rootid,
                                 needFetch: true // 标记需要单独获取
                             });
@@ -399,7 +409,7 @@ export class M_didaSync {
 
             // 批量处理需要滴答同步到思源的任务
             for (const [projectId, tasks] of tasksToSyncToSiyuan) {
-                for (const [taskId, {event, blockId, rootId, task, needFetch}] of tasks) {
+                for (const [taskId, {event, blockId, itemID, rootId, task, needFetch}] of tasks) {
                     let updatedTask = task;
 
                     // 如果需要单独获取任务数据
@@ -425,7 +435,7 @@ export class M_didaSync {
                     // 从滴答同步到思源时
                     try {
                         // 根据滴答清单数据更新思源数据库
-                        await this.updateSiyuanDatabase(event, blockId, rootId, updatedTask);
+                        await this.updateSiyuanDatabase(event, blockId, itemID, rootId, updatedTask);
 
                         // 计算并更新哈希值
                         const taskHash = this.calculateTaskHash(updatedTask);
@@ -468,7 +478,7 @@ export class M_didaSync {
 
                                     if (previousHash === currentEventHash) {
                                         // hash值一致，说明思源数据没有变化，用滴答清单数据更新思源数据库
-                                        await this.updateSiyuanDatabase(completedBlockInfo.event, completedBlockInfo.blockId, completedBlockInfo.rootId, task);
+                                        await this.updateSiyuanDatabase(completedBlockInfo.event, completedBlockInfo.blockId, completedBlockInfo.itemID, completedBlockInfo.rootId, task);
 
                                         // 更新哈希值为滴答任务的hash
                                         const taskHash = this.calculateTaskHash(task);

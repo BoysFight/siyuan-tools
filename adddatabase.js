@@ -73,7 +73,7 @@
                     colName: '开始时间',
                     getColValue: (keyID, rowID, cellID, avID) => {
                         const today = new Date();
-                        today.setHours(0, 0, 0, 0);
+                        today.setHours(8, 0, 0, 0);
                         return {"date": {"content": today.getTime(), "content2": today.getTime(), "isNotEmpty": true, "isNotEmpty2": true, "isNotTime": false, "hasEndDate": true}};
                     },
                 },
