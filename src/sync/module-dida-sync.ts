@@ -562,8 +562,8 @@ export class M_didaSync {
                 ? `滴答同步完成: ${messageParts.join(', ')}`
                 : '滴答同步完成: 无变化';
 
+            showMessage(message);
             api.showStatusMessage(message, 10000, "mydida");
-            // showMessage(message);
 
         } catch (error) {
             console.error("滴答清单同步失败:", error);

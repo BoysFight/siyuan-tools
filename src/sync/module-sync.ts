@@ -3,6 +3,7 @@ import * as api from "@/api/api"
 import { showMessage } from "siyuan";
 import { moduleInstances } from '@/index';
 import { M_didaSync } from './module-dida-sync';
+import { getFrontend, getBackend} from 'siyuan';
 
 declare const siyuan: any;
 
@@ -62,16 +63,21 @@ export class M_sync {
                         }
                     }
 
-                    // 如果当前不是主窗口（6806端口），跳过同步
-                    if (window.location.port !== '16806' && window.location.port !== '6806') {
-                        const currentPort = window.location.port;
-                        const reason = `当前端口 ${currentPort} 不是主窗口(6806Or16806)`;
-                        console.log(`[同步跳过] ${reason}`);
-                        showMessage(`同步操作已跳过：${reason}`, 3000);
+                    // 获取并打印当前前后端类型
+                    const frontend = getFrontend();
+                    const backend = getBackend();
+                    console.log(`[平台信息] 前端类型: ${frontend}, 后端类型: ${backend}`);
+
+                    // 只有在后端类型为docker或前端类型为desktop时执行同步
+                    if (backend === 'docker' ||
+                        (frontend === 'browser-desktop' && backend === 'linux') ||
+                        (frontend === 'desktop' && backend === 'windows')) {
+                        console.log('[同步执行] 当前是主窗口或Docker环境，开始执行同步操作');
+                    } else {
+                        const reason = `当前环境不满足滴答同步条件：前端类型 ${frontend}，后端类型 ${backend}`;
+                        console.log(`[滴答同步跳过] ${reason}`);
                         return;
                     }
-                    console.log('[同步执行] 当前是主窗口且为最后编辑窗口，开始执行同步操作');
-
 
                     // 处理滴答清单同步
                     if (this.didaSyncInstance["mydidaSyncEnabled"] &&
