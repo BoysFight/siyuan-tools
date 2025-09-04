@@ -49,40 +49,44 @@ export class M_sync {
             const msg = JSON.parse(e.data);
             if (msg.cmd === "syncing") {
                 if (msg.msg && msg.msg.startsWith('上传')) {
-                    console.log("同步结束");
-
-                    // 处理 Docker 同步
-                    if (this.dockerSyncEnabled) {
-                        const currentHost = window.location.host;
-                        if (url.includes(currentHost)) {
-                            console.log("取消感知");
-                        } else {
-                            setTimeout(async () => {
-                                await this.handleDockerSync();
-                            }, 1000);
-                        }
-                    }
-
+                    console.log("同步结束完成上传，开始同步滴答清单或同步感知");
                     // 获取并打印当前前后端类型
                     const frontend = getFrontend();
                     const backend = getBackend();
                     console.log(`[平台信息] 前端类型: ${frontend}, 后端类型: ${backend}`);
 
-                    // 只有在后端类型为docker或前端类型为desktop时执行同步
-                    if (backend === 'docker' ||
-                        (frontend === 'browser-desktop' && backend === 'linux') ||
-                        (frontend === 'desktop' && backend === 'windows')) {
-                        console.log('[同步执行] 当前是主窗口或Docker环境，开始执行同步操作');
-                    } else {
-                        const reason = `当前环境不满足滴答同步条件：前端类型 ${frontend}，后端类型 ${backend}`;
-                        console.log(`[滴答同步跳过] ${reason}`);
+                    // 检查是否为主窗口或桌面客户端，只有主窗口或桌面客户端才执行同步
+                    const isMainWindow = window.location.port === '6806' || window.location.port === '16806';
+                    const isDesktopWindows = frontend === 'desktop' && backend === 'windows';
+                    
+                    if (!isMainWindow && !isDesktopWindows) {
+                        const currentPort = window.location.port;
+                        const reason = `当前端口 ${currentPort} 不是主窗口(6806或16806)且不是Windows桌面客户端`;
+                        console.log(`[同步跳过] ${reason}`);
+                        showMessage(`同步操作已跳过：${reason}`, 3000);
                         return;
                     }
+                    // 已通过前面的条件检查，现在可以执行同步操作
+                    console.log('[同步执行] 当前是主窗口或桌面客户端，开始执行同步操作');
 
                     // 处理滴答清单同步
                     if (this.didaSyncInstance["mydidaSyncEnabled"] &&
                         this.settingdata["docker-sync-auto-trigger-dida"]) {
-                        await this.didaSyncInstance.syncToDidaList();
+                            await this.didaSyncInstance.syncToDidaList();
+                    }
+
+                    // 处理 Docker 同步
+                    if (this.dockerSyncEnabled) {
+                        const currentHost = window.location.host;
+                        
+                        if (url.includes(currentHost)) {
+                            console.log("[Docker同步] 当前主机已包含在同步URL中，取消感知");
+                        } else {
+                            console.log("[Docker同步] 延迟1秒后执行Docker同步");
+                            setTimeout(async () => {
+                                await this.handleDockerSync();
+                            }, 1000);
+                        }
                     }
                 }
             }

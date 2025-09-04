@@ -1220,7 +1220,17 @@ export async function generateSiyuanID(more = false) {
     }
 }
 
-async function getDateTimestamps(dateStr: string): Promise<{ start: number, end: number }> {
+async function getDateTimestamps(dateStr?: string): Promise<{ start: number, end: number }> {
+    // 确保 dateStr 不为 undefined 或 null
+    if (!dateStr) {
+        // 如果 dateStr 为 undefined 或 null，返回当前时间
+        const now = new Date();
+        return {
+            start: now.getTime(),
+            end: now.getTime() + (settingdata['cal-time'] ? settingdata['cal-time'] : 0) * 60 * 60 * 1000
+        };
+    }
+    
     // 解析日期字符串
     const parseDate = (dateStr: string): Date => {
         if (dateStr.includes('T')) {

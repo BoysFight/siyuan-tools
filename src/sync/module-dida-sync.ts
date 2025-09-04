@@ -14,6 +14,7 @@ export class M_didaSync {
     private settingdata: any;
     private officialClient?: TickTickOfficialClient;
     private mydidaSyncEnabled: boolean = false;
+    public lastSyncHasChanges: boolean = false; // 标记最近一次同步是否有变更
 
     constructor(plugin: steveTools) {
         this.plugin = plugin;
@@ -557,6 +558,9 @@ export class M_didaSync {
             if (deletedTasksCount > 0) {
                 messageParts.push(`${deletedTasksCount}个任务已从滴答清单删除`);
             }
+
+            // 设置同步状态标志
+            this.lastSyncHasChanges = syncToDidaCount > 0;
 
             const message = messageParts.length > 0
                 ? `滴答同步完成: ${messageParts.join(', ')}`
