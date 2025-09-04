@@ -222,7 +222,8 @@ export class TickTickOfficialClient {
             dueDate: task.dueDate,
             priority: task.priority || 0,
             status: task.status || 0,
-            tags: task.tags || []
+            tags: task.tags || [],
+            isAllDay: task.isAllDay
         };
 
         const result = await this.request('task', {

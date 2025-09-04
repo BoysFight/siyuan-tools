@@ -289,7 +289,7 @@ export class M_didaSync {
                             // 如果hash不同，说明滴答清单有更新
                             if (didaTaskHash !== previousHash) {
                                 // 打印详细的差异信息
-                                console.log(`发现任务差异 - 任务ID: ${didaTaskId}`);
+                                console.log(`发现任务差异 - 任务ID: ${didaTaskId}, 标题: "${findDidaTaskDataInDida.title || '无标题'}"`);
                                 console.log(`思源笔记哈希: ${previousHash}`);
                                 console.log(`滴答清单哈希: ${didaTaskHash}`);
 
@@ -623,7 +623,8 @@ export class M_didaSync {
         dueDate: string | null,
         priority: number,
         status: number,
-        tags?: string[] // 添加标签字段
+        tags?: string[], // 添加标签字段
+        isAllDay?: boolean // 添加全天事件字段
     }): string {
         // 标准化数据，确保空值处理一致
         const hashData = {
@@ -633,7 +634,8 @@ export class M_didaSync {
             dueDate: data.dueDate || null,
             priority: typeof data.priority === 'number' ? data.priority : 0,
             status: data.status || 0,
-            tags: data.tags || [] // 添加标签处理
+            tags: data.tags || [], // 添加标签处理
+            isAllDay: data.isAllDay // 添加全天事件字段
         };
 
         const str = JSON.stringify(hashData);
@@ -654,7 +656,8 @@ export class M_didaSync {
         dueDate: string | null,
         priority: number,
         status: number,
-        tags?: string[] // 添加标签字段
+        tags?: string[], // 添加标签字段
+        isAllDay?: boolean // 添加全天事件字段
     }): string {
         return this.calculateHash({
             title: task.title || "",
@@ -663,7 +666,8 @@ export class M_didaSync {
             dueDate: task.dueDate || null,
             priority: task.priority || 0,
             status: task.status || 0,
-            tags: task.tags || [] // 添加标签
+            tags: task.tags || [], // 添加标签
+            isAllDay: task.isAllDay // 添加全天事件字段
         });
     }
 
@@ -676,7 +680,8 @@ export class M_didaSync {
             dueDate: task.dueDate || null,
             priority: task.priority || 0,
             status: task.status || 0,
-            tags: task.tags || [] // 添加标签
+            tags: task.tags || [], // 添加标签
+            isAllDay: task.isAllDay // 添加全天事件字段
         });
     }
 

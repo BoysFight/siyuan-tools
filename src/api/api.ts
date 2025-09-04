@@ -1051,7 +1051,7 @@ export async function handleDidaListEvent(avID: string, blockId: string, itemID:
         // 清除之前的计时器
         clearTimeout(didaEventDebounceTimer);
 
-        console.log('设置同步定时器，30秒后执行');
+        console.log('设置同步定时器，10秒后执行');
         didaEventDebounceTimer = setTimeout(async () => {
             try {
                 console.log('开始执行同步操作');
@@ -1060,7 +1060,7 @@ export async function handleDidaListEvent(avID: string, blockId: string, itemID:
             } catch (error) {
                 console.error('同步操作失败:', error);
             }
-        }, 30000);
+        }, 10000);
 
         // 检查是否为滴答清单数据库
         const didaDbId = settingdata['cal-dida-db-id'];
