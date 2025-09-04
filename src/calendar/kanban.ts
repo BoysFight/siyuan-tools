@@ -5,7 +5,7 @@ import { NestedKBCalendarEvent, KBCalendarEvent, ISelectOption, ScrollState } fr
 import { av_ids, filterViewId, OUTcalendar } from './calendar'; // 移除未使用 isEventCompleted, viewName
 import { showMessage } from 'siyuan';
 import { settingdata } from '..';
-import { changestatus_for_zq, createEventInDatabase, getViewId, getViewValue, showEvent, updateParentChildRelation, updateProjectRelation } from './myF';
+import { changestatus_for_zq, createEventInDatabase, getViewId, getViewValue, getFilteredViewValues,showEvent, updateParentChildRelation, updateProjectRelation } from './myF';
 import { runblockdata_for_sub } from './quickadd';
 let sortableInstances: Sortable[] = []; // 存储所有Sortable实例
 export let allKBEvents: NestedKBCalendarEvent[] = [];
@@ -137,18 +137,18 @@ const CustomViewConfig = {
                             // 异步更新状态，不阻塞渲染
                             setTimeout(async () => {
                                 try {
-                                    // 状态变化后更新父子关系
-                                    await updateParentChildRelation(
-                                        event.extendedProps.blockId,
-                                        event.extendedProps.itemID,
-                                        event.extendedProps.rootid
-                                    );
-
-                                    // 获取视图数据并更新项目关联
-                                    const viewIDs = await getViewId(av_ids);
-                                    const viewValue = await getViewValue(viewIDs);
-                                    const to_db_id = event.extendedProps.rootid;
-                                    await updateProjectRelation(event.extendedProps.blockId, event.extendedProps.itemID, to_db_id, viewValue);
+                                    // // 获取视图数据并更新项目关联
+                                    // const viewIDs = await getViewId(av_ids);
+                                    // const viewValue = await getFilteredViewValues(viewIDs);
+                                    // // 状态变化后更新父子关系
+                                    // await updateParentChildRelation(
+                                    //     event.extendedProps.blockId,
+                                    //     event.extendedProps.itemID,
+                                    //     event.extendedProps.rootid,
+                                    //     viewValue
+                                    // );
+                                    // const to_db_id = event.extendedProps.rootid;
+                                    // await updateProjectRelation(event.extendedProps.blockId, event.extendedProps.itemID, to_db_id, viewValue);
 
                                     await myK.run_changestatus(event, selectdata);
                                     console.log(`自动更新事件状态: ${event.title} -> ${newStatus}`);
@@ -755,16 +755,17 @@ async function handleStatusChange(Fr_event, parentEl) {
     const selectdata: ISelectOption[] = [{ content: newcategory_cn }];
     await myK.run_changestatus(Fr_event, selectdata);
 
+    // 获取视图数据并更新项目关联
+    const viewIDs = await getViewId(av_ids);
+    const viewValue = await getFilteredViewValues(viewIDs);
     // 状态变化后更新父子关系
     await updateParentChildRelation(
         Fr_event.extendedProps.blockId,
         Fr_event.extendedProps.itemID,
-        Fr_event.extendedProps.rootid
+        Fr_event.extendedProps.rootid,
+        viewValue
     );
 
-    // 获取视图数据并更新项目关联
-    const viewIDs = await getViewId(av_ids);
-    const viewValue = await getViewValue(viewIDs);
     const to_db_id = Fr_event.extendedProps.rootid;
     await updateProjectRelation(Fr_event.extendedProps.blockId, Fr_event.extendedProps.itemID, to_db_id, viewValue);
 

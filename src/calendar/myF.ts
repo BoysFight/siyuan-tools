@@ -12,6 +12,7 @@ import { runblockdata_for_category, runblockdata_for_note, runblockdata_for_sub,
 // import { isEventCompleted } from './calendar';
 import { createDailynote } from '@frostime/siyuan-plugin-kits';
 import { getRequiredFields } from './fieldConfig';
+import { av_ids, filterViewId } from './calendar'; // 移除未使用 isEventCompleted, viewName
 
 // ================== 自定义类型补充（轻量，不破坏现有引用） ==================
 // 事件字段解析结果（行中的“事件”列）
@@ -139,6 +140,19 @@ export async function getViewId(va_ids: string[], filterName: string = ""): View
 // 缓存实现
 const viewValueCache = new Map<string, {data: any[], timestamp: number}>();
 const CACHE_TIMEOUT = 5 * 1000; // 缓存有效期5秒
+
+/**
+ * 获取视图数据并应用过滤器
+ * @param viewIds_Data 视图ID数据数组
+ * @param isZQ 是否为周期视图
+ * @param type 视图类型
+ * @returns 过滤后的视图数据
+ */
+export async function getFilteredViewValues(viewIds_Data: ViewItem[], isZQ = false, type = "normal") {
+    const filteredViewIDs = viewIds_Data.filter(item => filterViewId.includes(item.viewId));
+    const viewValue = await getViewValue(filteredViewIDs.length > 0 ? filteredViewIDs : viewIds_Data,isZQ, type);
+    return viewValue;
+}
 
 export async function getViewValue(viewIds_Data: ViewItem[], isZQ = false, type = "normal") {
     // 生成缓存键
@@ -855,7 +869,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         await Promise.all(updatePromises);
 
         // 处理父子关系
-        await updateParentChildRelation(direct.directid, itemID, to_db_id);
+        await updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue);
 
         // 获取当前文档所在的项目数据库中的项目ID
         await updateProjectRelation(direct.directid, itemID, to_db_id, viewValue);
@@ -1156,7 +1170,8 @@ export async function checkBlockInEvent(blockId: string, to_db_id: string) {
 export async function updateParentChildRelation(
     childBlockId: string,
     itemID?: string,
-    to_db_id?: string
+    to_db_id?: string,
+    viewValue?: any[]
 ) {
     // 添加获取最近上级列表项块的辅助函数
     async function findNearestParentListItemBlock(blockId: string): Promise<string | null> {
@@ -1178,10 +1193,6 @@ export async function updateParentChildRelation(
     if (parentListBlockId) {
         const parentInDatabase = await checkBlockInEvent(parentListBlockId, to_db_id);
         if (parentInDatabase) {
-            // 获取视图数据
-            const viewIds_Data = await getViewId([to_db_id]);
-            const viewValue = await getViewValue(viewIds_Data);
-
             // 获取子块的标题
             const childBlock = await api.getBlockByID(childBlockId);
             const title = childBlock?.content || '';

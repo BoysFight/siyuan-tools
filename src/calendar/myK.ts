@@ -109,8 +109,26 @@ export function sortEvents(events: NestedKBCalendarEvent[]): NestedKBCalendarEve
         if (isDoneA !== isDoneB) {
             return isDoneA ? 1 : -1; // 已完成在后
         }
-
-        // 未完成/进行中事件按时间升序
+        
+        // 有子事件的排在前面，如果都有或都没有子事件，则按优先级和时间排序
+        const hasSubA = !!a.extendedProps.sub?.ids?.length;
+        const hasSubB = !!b.extendedProps.sub?.ids?.length;
+        
+        if (hasSubA !== hasSubB) {
+            return hasSubA ? -1 : 1; // 有子事件的排在前面
+        }
+        
+        // 按优先级排序（高、中、低）
+        const priorityA = a.extendedProps.priority || '无';
+        const priorityB = b.extendedProps.priority || '无';
+        const priorityValueA = PRIORITY_MAP[priorityA] || 0;
+        const priorityValueB = PRIORITY_MAP[priorityB] || 0;
+        
+        if (priorityValueA !== priorityValueB) {
+            return priorityValueB - priorityValueA; // 高优先级排在前面
+        }
+        
+        // 优先级相同，按时间排序
         const timeA = new Date(a.range?.end || a.range?.start || a.extendedProps.Kstart).getTime();
         const timeB = new Date(b.range?.end || b.range?.start || b.extendedProps.Kstart).getTime();
         return timeA - timeB;
