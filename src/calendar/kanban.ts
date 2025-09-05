@@ -308,7 +308,7 @@ export async function handleAddButtonClick(status = "", direct = { isdirect: fal
         const now = new Date();
         const fnow = myK.formatDateTime(now);
         const viewIDs = await getViewId(av_ids);
-        const viewValue = await getViewValue(viewIDs);
+        const viewValue = await getFilteredViewValues(viewIDs);
         const rootid = viewIDs.find(v => filterViewId.includes(v.viewId))?.rootid;
         return await createEventInDatabase(fnow, OUTcalendar, viewValue, rootid, status, direct, isrefresh);
     };
@@ -327,7 +327,7 @@ export async function handleAddButtonClick_Independent(status = "", direct = { i
     // console.log('格式化时间:', fnow);
 
     const viewIDs = await getViewId([settingdata["cal-db-id"]])
-    const viewValue = await getViewValue(viewIDs);
+    const viewValue = await getFilteredViewValues(viewIDs);
     const rootid = viewIDs.find(v => filterViewId.includes(v.viewId))?.rootid;
     return await createEventInDatabase(fnow, OUTcalendar, viewValue, rootid, status, direct, isrefresh);
 }

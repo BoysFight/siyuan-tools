@@ -792,7 +792,8 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
     }
     if (direct.isdirect) {
         // console.log("createEventInDatabase:::", await checkBlockInEvent(direct.directid, to_db_id));
-        const itemID = await api.generateSiyuanID() as string; //直接使用块ID作为itemID
+        // const itemID = await api.generateSiyuanID() as string; //直接使用块ID作为itemID
+        const itemID = direct.directid; //直接使用块ID作为itemID
         if (await checkBlockInEvent(direct.directid, to_db_id)) {
             console.log("目标数据库已存在此事件");
             return;
@@ -1251,14 +1252,13 @@ export async function updateProjectRelation(
 
         // 获取现有的项目关联数据
         const existingProjectData = await getBlockValuesFromViewValue(viewValue, blockId, to_db_id);
-        const existingValues = existingProjectData?.项目 ? [existingProjectData.项目] : [];
+        const existingValues = existingProjectData?.project ? [existingProjectData.project] : [];
 
         // 预定义空关系返回值，避免重复创建
         // 高效处理现有关系
         const existingBlockIds = new Set(
             (existingValues || []).flatMap(value => [
-                value.block?.id,
-                ...(value.relation?.blockIDs || [])
+                ...(value.ids || [])
             ]).filter(Boolean)
         );
 
@@ -1373,7 +1373,7 @@ export async function updateProjectRelation(
                         action: "add",
                         oldrelation: {
                             ids: [...existingBlockIds],
-                            contents: existingProjectData?.项目?.contents || []
+                            contents: existingProjectData?.project?.contents || []
                         }
                     },
                     "relation"
@@ -1468,6 +1468,7 @@ async function getBlockValuesFromViewValue(viewValue: any[], blockId: string, ro
                         startTime: item['开始时间'] || {},
                         description: item['描述'] || {},
                         status: item['状态'] || {},
+                        project: item['项目'] || {},
                     };
                 }
             }
