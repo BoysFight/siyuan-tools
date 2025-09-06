@@ -1203,6 +1203,12 @@ export async function updateParentChildRelation(
             const subItems = parentListItemValue.subItems
             const parentListBlockItemID = parentListItemValue.event.itemID
 
+            // 检查是否已存在该子项目关联
+            if (relationKeyID && subItems && subItems.ids && subItems.ids.includes(itemID)) {
+                console.log(`子项目 ${title} (${childBlockId}) 已关联到父项目 ${parentListItemValue.event?.content} (${parentListBlockId})，跳过添加`);
+                return;
+            }
+
             if (relationKeyID && subItems) {
                 // 更新父事件的关联字段，保留原有关联
                 await api.updateAttrViewCell_pro(
@@ -1211,7 +1217,7 @@ export async function updateParentChildRelation(
                     relationKeyID,
                     parentListBlockItemID,
                     {
-                        blockID: childBlockId,
+                        blockID: itemID,
                         content: title,
                         action: "add",
                         oldrelation: {
@@ -1221,6 +1227,9 @@ export async function updateParentChildRelation(
                     },
                     "relation",
                 )
+                console.info(`成功更新父任务 - blockId: ${parentListBlockId} - 新增父任务: ${parentListItemValue.event?.content}`);
+                sy.showMessage(`成功更新父任务: ${parentListItemValue.event?.content}`, 3000, "info");
+
             }
         }
     }
@@ -1354,16 +1363,13 @@ export async function updateProjectRelation(
             blockIdsToAdd.add(docId);
         }
 
-        // 过滤掉已存在的项目关联
-        const newBlockIdsToAdd = [...blockIdsToAdd].filter(id => !existingBlockIds.has(id));
-
         // 如果有新的项目关联需要添加
-        if (newBlockIdsToAdd.length > 0) {
+        if (blockIdsToAdd.size > 0) {
             // 存储新增项目的标题
             const newProjectTitles = [];
 
             // 逐个添加新的项目关联
-            for (const newBlockId of newBlockIdsToAdd) {
+            for (const newBlockId of blockIdsToAdd) {
 
                 let newBlockIditemID = {};
 
@@ -1395,6 +1401,11 @@ export async function updateProjectRelation(
                 // 如果在数据库中，再获取 itemID
                 newBlockIditemID = await api.getAttributeViewItemIDsByBoundIDs(dbId, [newBlockId as string]);
 
+                // 过滤掉已存在的项目关联
+                if (newBlockIditemID && newBlockIditemID[newBlockId as string] && existingBlockIds.has(newBlockIditemID[newBlockId as string])){
+                    continue;
+                }
+
                 // 只有当块在数据库中时才进行更新操作
                 if (newBlockIditemID && newBlockIditemID[newBlockId as string]) {
                     await api.updateAttrViewCell_pro(
@@ -1404,7 +1415,7 @@ export async function updateProjectRelation(
                         itemID,
                         {
                             blockID: newBlockIditemID[newBlockId as string],
-                            content: '',
+                            content: blockTitle,
                             action: "add",
                             oldrelation: {
                                 ids: [...existingBlockIds],
@@ -1414,15 +1425,16 @@ export async function updateProjectRelation(
                         "relation"
                     );
                     // 更新已存在的ID集合，为下一次添加做准备
-                    existingBlockIds.add(newBlockId);
+                    existingBlockIds.add(newBlockIditemID[newBlockId as string]);
                     // 添加标题到新增项目标题列表
                     newProjectTitles.push(blockTitle);
+                    console.info(`成功更新项目 - blockId: ${blockId} - 新增项目: ${blockTitle}`);
+                    sy.showMessage(`成功更新项目 - 新增项目: ${blockTitle}`, 3000, "info");
                 } else {
                     console.log(`块 ${blockTitle} (${newBlockId}) 不在数据库 ${to_db_id} 中，跳过添加`);
                 }
             }
 
-            console.info(`成功更新项目关联 - blockId: ${blockId} - 新增项目: ${newProjectTitles.join(', ')}`);
         } else {
             console.info(`未找到符合条件的项目关联 - blockId: ${blockId}`);
         }
