@@ -52,6 +52,37 @@ $priority-color-high-background: var(--b3-card-error-background);
     white-space: normal;     /* 允许自动换行 */
 }
 
+/* 被关联的子事件样式 */
+.referenced-event {
+    border-left: 3px solid rgba(0, 85, 153, 0.5) !important;
+    position: relative;
+}
+
+.referenced-event::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(var(--b3-theme-primary-rgb), 0.05);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.referenced-icon {
+    font-size: 0.5em;
+    margin-left: 0px;
+    color: var(--b3-theme-primary);
+}
+
+/* 父卡片中的子卡片样式 */
+.kanban-subcards .kanban-card {
+    border-left: 3px solid var(--b3-theme-on-primary);
+    margin-left: 8px;
+    padding-left: 4px;
+}
+
 //事件块背景
 .sb,
 .list,
@@ -93,7 +124,7 @@ $priority-color-high-background: var(--b3-card-error-background);
 // 日历事件样式优化
 .fc-event {
     max-width: 100%;
-    
+
     .fc-event-main {
         .fc-event-main-frame {
             .fc-event-title-container {
@@ -124,26 +155,26 @@ $priority-color-high-background: var(--b3-card-error-background);
 .fc:has(.fc-event-dragging) .fc-more-popover {
     /* 强制隐藏弹出框，使用最高优先级 */
     // display: none !important;
-    
+
     /* 平滑淡出效果，增强视觉体验 */
     opacity: 0;
     visibility: hidden; /* 确保元素不可见且不占据空间 */
-    transition: 
+    transition:
         opacity 0.5s ease-in-out,
         visibility 0.5s ease-in-out;
 }
-/* 
+/*
  * 拖拽结束后平滑显示弹出框
  * 提供流畅的视觉过渡效果
  */
 // .fc:not(:has(.fc-event-dragging)) .fc-more-popover {
 //     /* 确保元素可以显示 */
 //     // display: block !important;
-    
+
 //     /* 平滑淡入效果 */
 //     opacity: 1;
 //     visibility: visible;
-//     transition: 
+//     transition:
 //         opacity 0.5s ease-in-out,
 //         visibility 0.5s ease-in-out;
 // }
@@ -173,7 +204,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    
+
     .view-filter-select-all,
     .view-filter-clear-all,
     .view-filter-manage-groups {
@@ -182,12 +213,12 @@ $priority-color-high-background: var(--b3-card-error-background);
         border-radius: 4px;
         flex: 1;
         min-width: 80px;
-        
+
         &:hover {
             background-color: $hover-background-color;
         }
     }
-    
+
     .view-filter-manage-groups {
         background-color: var(--b3-card-info-background);
         color: var(--b3-card-info-color);
@@ -202,7 +233,7 @@ $priority-color-high-background: var(--b3-card-error-background);
 
 .view-filter-group {
     border-bottom: 1px solid $border-color;
-    
+
     &:last-child {
         border-bottom: none;
     }
@@ -218,7 +249,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     align-items: center;
     justify-content: space-between;
     transition: background-color 0.2s ease;
-    
+
     &:hover {
         background-color: $hover-background-color;
     }
@@ -228,30 +259,30 @@ $priority-color-high-background: var(--b3-card-error-background);
     display: flex;
     gap: 4px;
     align-items: center;
-    
+
     .view-filter-group-select-btn,
     .view-filter-group-deselect-btn {
         padding: 2px 8px;
         font-size: 0.8em;
         border-radius: 3px;
-        
+
         &:hover {
             background-color: $hover-background-color;
         }
     }
-    
+
     .view-filter-group-select-btn {
         background-color: var(--b3-card-success-background);
         color: var(--b3-card-success-color);
         border-color: var(--b3-card-success-color);
     }
-    
+
     .view-filter-group-deselect-btn {
         background-color: var(--b3-card-warning-background);
         color: var(--b3-card-warning-color);
         border-color: var(--b3-card-warning-color);
     }
-    
+
     .view-filter-toggle-icon {
         font-size: 0.8em;
         transition: transform 0.2s ease;
@@ -278,11 +309,11 @@ $priority-color-high-background: var(--b3-card-error-background);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    
+
     &:hover {
         background-color: $hover-background-color;
     }
-    
+
     .view-filter-toggle-icon {
         font-size: 0.7em;
     }
@@ -299,11 +330,11 @@ $priority-color-high-background: var(--b3-card-error-background);
     display: flex;
     align-items: center;
     gap: 10px;
-    
+
     &:hover {
         background-color: $hover-background-color;
     }
-    
+
     &.view-filter-subitem {
         padding-left: 32px;
         font-size: 0.9em;
@@ -327,7 +358,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     background-color: var(--b3-theme-surface);
     display: flex;
     justify-content: flex-end;
-    
+
     .b3-button {
         padding: 6px 16px;
         flex: 1;
@@ -368,19 +399,19 @@ $priority-color-high-background: var(--b3-card-error-background);
     justify-content: space-between;
     align-items: center;
     background-color: var(--b3-theme-surface);
-    
+
     h3 {
         margin: 0;
         color: $text-color;
     }
-    
+
     .group-management-close {
         padding: 4px 8px;
         font-size: 1.2em;
         border: none;
         background: none;
         cursor: pointer;
-        
+
         &:hover {
             background-color: $hover-background-color;
         }
@@ -399,34 +430,34 @@ $priority-color-high-background: var(--b3-card-error-background);
     border: 1px solid $border-color;
     border-radius: 6px;
     background-color: var(--b3-theme-surface);
-    
+
     h4 {
         margin: 0 0 12px 0;
         color: $text-color;
     }
-    
+
     .form-row {
         display: flex;
         gap: 8px;
         align-items: center;
-        
+
         input {
             padding: 6px 10px;
             border: 1px solid $border-color;
             border-radius: 4px;
             background-color: $background-color;
             color: $text-color;
-            
+
             &.group-name-input {
                 flex: 1;
             }
-            
+
             &.group-icon-input {
                 width: 60px;
                 text-align: center;
             }
         }
-        
+
         .create-group-btn {
             padding: 6px 16px;
             background-color: var(--b3-card-success-background);
@@ -452,7 +483,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     border-radius: 6px;
     margin-bottom: 8px;
     background-color: var(--b3-theme-surface);
-    
+
     &:hover {
         background-color: $hover-background-color;
     }
@@ -462,16 +493,16 @@ $priority-color-high-background: var(--b3-card-error-background);
     display: flex;
     align-items: center;
     gap: 10px;
-    
+
     .group-icon {
         font-size: 1.2em;
     }
-    
+
     .group-name {
         font-weight: 500;
         color: $text-color;
     }
-    
+
     .group-count {
         font-size: 0.9em;
         color: var(--b3-theme-on-surface-light);
@@ -481,20 +512,20 @@ $priority-color-high-background: var(--b3-card-error-background);
 .group-actions {
     display: flex;
     gap: 8px;
-    
+
     .group-edit-btn,
     .group-delete-btn {
         padding: 4px 12px;
         font-size: 0.9em;
         border-radius: 4px;
     }
-    
+
     .group-edit-btn {
         background-color: var(--b3-card-info-background);
         color: var(--b3-card-info-color);
         border-color: var(--b3-card-info-color);
     }
-    
+
     .group-delete-btn {
         background-color: var(--b3-card-error-background);
         color: var(--b3-card-error-color);
@@ -535,7 +566,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     justify-content: space-between;
     align-items: center;
     background-color: var(--b3-theme-surface);
-    
+
     h3 {
         margin: 0;
         color: $text-color;
@@ -546,19 +577,19 @@ $priority-color-high-background: var(--b3-card-error-background);
     padding: 20px;
     overflow-y: auto;
     flex: 1;
-    
+
     .form-row {
         display: flex;
         gap: 12px;
         align-items: center;
         margin-bottom: 16px;
-        
+
         label {
             min-width: 80px;
             font-weight: 500;
             color: $text-color;
         }
-        
+
         input {
             flex: 1;
             padding: 6px 10px;
@@ -568,11 +599,11 @@ $priority-color-high-background: var(--b3-card-error-background);
             color: $text-color;
         }
     }
-    
+
     .group-views-section,
     .available-views-section {
         margin-bottom: 20px;
-        
+
         h4 {
             margin: 0 0 12px 0;
             color: $text-color;
@@ -580,7 +611,7 @@ $priority-color-high-background: var(--b3-card-error-background);
             border-bottom: 1px solid $border-color;
         }
     }
-    
+
     .group-views-list,
     .available-views-list {
         border: 1px solid $border-color;
@@ -589,20 +620,20 @@ $priority-color-high-background: var(--b3-card-error-background);
         overflow-y: auto;
         background-color: var(--b3-theme-surface);
     }
-    
+
     .group-edit-actions {
         display: flex;
         gap: 12px;
         justify-content: flex-end;
         padding-top: 16px;
         border-top: 1px solid $border-color;
-        
+
         .save-group-btn {
             background-color: var(--b3-card-success-background);
             color: var(--b3-card-success-color);
             border-color: var(--b3-card-success-color);
         }
-        
+
         .cancel-group-btn {
             background-color: var(--b3-card-warning-background);
             color: var(--b3-card-warning-color);
@@ -617,24 +648,24 @@ $priority-color-high-background: var(--b3-card-error-background);
     align-items: center;
     padding: 8px 12px;
     border-bottom: 1px solid $border-color;
-    
+
     &:last-child {
         border-bottom: none;
     }
-    
+
     &:hover {
         background-color: $hover-background-color;
     }
-    
+
     span {
         color: $text-color;
     }
-    
+
     button {
         padding: 4px 8px;
         font-size: 0.8em;
         border-radius: 3px;
-        
+
         &:hover {
             opacity: 0.8;
         }
@@ -653,7 +684,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     background-color: var(--b3-card-info-background);
     color: var(--b3-card-info-color);
     border-color: var(--b3-card-info-color);
-    
+
     &:hover {
         background-color: var(--b3-card-info-color);
         color: var(--b3-card-info-background);
@@ -666,10 +697,10 @@ $priority-color-high-background: var(--b3-card-error-background);
             opacity: 0.7;
         }
     }
-    
+
     &.hidden-group {
         opacity: 0.6;
-        
+
         .group-info {
             text-decoration: line-through;
         }
@@ -681,7 +712,7 @@ $priority-color-high-background: var(--b3-card-error-background);
     margin-top: 20px;
     border-top: 1px solid $border-color;
     padding-top: 15px;
-    
+
     h4 {
         margin-bottom: 10px;
         color: $text-color;
@@ -717,6 +748,3 @@ $priority-color-high-background: var(--b3-card-error-background);
 //   font-weight: 600;
 //   letter-spacing: 0.5px;
 // }
-
-
-

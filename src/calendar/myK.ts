@@ -100,6 +100,14 @@ const PRIORITY_MAP = {
 
 export function sortEvents(events: NestedKBCalendarEvent[]): NestedKBCalendarEvent[] {
     return events.sort((a, b) => {
+        // 被引用的事件排在最后
+        const isReferencedA = a.extendedProps.isReferenced === true;
+        const isReferencedB = b.extendedProps.isReferenced === true;
+        
+        if (isReferencedA !== isReferencedB) {
+            return isReferencedA ? 1 : -1; // 被引用的事件排在后面
+        }
+        
         // 已完成事件排在后面
         const statusA = a.extendedProps.status || '未完成';
         const statusB = b.extendedProps.status || '未完成';

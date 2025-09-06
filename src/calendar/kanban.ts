@@ -200,19 +200,24 @@ const CustomViewConfig = {
     </div>
 ` : '';
 
+            // 检查事件是否被引用（是否是子事件）
+            const isReferenced = event.extendedProps.isReferenced;
+
             return `
-                <div class="kanban-card ${isRecurring ? 'recurring-event no-drag' : ''}"
+                <div class="kanban-card ${isRecurring ? 'recurring-event no-drag' : ''} ${isReferenced ? 'referenced-event' : ''}"
                 data-id="${event.publicId}"
                 data-block-id="${event.extendedProps.blockId}"
                 data-item-id="${event.extendedProps.itemID || ''}"
                 data-start-date="${event.range.start instanceof Date ? event.range.start.toISOString().split('T')[0] : ''}"
-                ${isRecurring ? 'data-recurring="true"' : ''}>
+                ${isRecurring ? 'data-recurring="true"' : ''}
+                ${isReferenced ? 'data-referenced="true"' : ''}>
                     <div class="kanban-card-header">
                         <h3>${isRecurring ?
                     `<span style="${titleStyle}">${event.title}</span>` :
                     `<span class="st-ref" style="${titleStyle}" data-type="block-ref" data-id="${event.extendedProps.blockId}" data-subtype="d">${event.title}</span>`
                 }
                          ${isRecurring ? '<span class="recurring-icon" title="周期事件">🔄</span>' : ''}
+                         ${isReferenced ? '<span class="referenced-icon" title="被关联的子事件">🔗</span>' : ''}
                          </h3>
                         <div class="kanban-card-meta">
                             <span class="kanban-nowToEndTime">${nowToEndTime}</span>
@@ -568,6 +573,11 @@ function convertEventsToNested(events: KBCalendarEvent[], includeReferencedEvent
         visited.add(clonedEvent.extendedProps.blockId);
         parentIds.add(clonedEvent.extendedProps.blockId);
 
+         const isReferenced = referencedEvents.has(event.extendedProps.blockId);
+         if (isReferenced) {
+            clonedEvent.extendedProps.isReferenced = true;
+         }
+
         // 处理周期事件状态
         if (clonedEvent.extendedProps?.isRecurring && clonedEvent.extendedProps.source !== 'qqcalendar') {
             const okday = clonedEvent.extendedProps.okday;
@@ -604,6 +614,7 @@ function convertEventsToNested(events: KBCalendarEvent[], includeReferencedEvent
 
         return clonedEvent;
     }
+
     // 先构建所有事件的引用关系
     events.forEach(event => {
         if (event.extendedProps.sub?.ids) {

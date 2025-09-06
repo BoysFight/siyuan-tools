@@ -566,6 +566,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                         tags: Array.isArray(item['标签']?.content) ? item['标签'].content : [],
                         sub: item['子级'] || '',
                         hasCircularRef: false,
+                        isReferenced: false,
                         statusid: item['状态']?.keyID || '',
                         priorityid: item['优先级']?.keyID || '',
                         categoryid: item['分类']?.keyID || '',
@@ -759,12 +760,12 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
     isrefresh = true
 ) {
     // 如果当前不是主窗口（6806端口），跳过同步
-    if (window.location.port !== '16806' && window.location.port !== '6806') {
-        const currentPort = window.location.port;
-        const reason = `当前端口 ${currentPort} 不是主窗口(6806Or16806)`;
-        console.log(`[跳过创建任务] ${reason}`);
-        return;
-    }
+    // if (window.location.port !== '16806' && window.location.port !== '6806') {
+    //     const currentPort = window.location.port;
+    //     const reason = `当前端口 ${currentPort} 不是主窗口(6806Or16806)`;
+    //     console.log(`[跳过创建任务] ${reason}`);
+    //     return;
+    // }
     let isok = false;
     status = status || "未完成";
     let to_db_id = db_id || settingdata["cal-db-id"];
@@ -866,14 +867,12 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, allDayKeyID, itemID, false, "checkbox"));
         }
 
+        // 将父子关系和项目关联更新也加入到Promise数组中
+        updatePromises.push(updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue));
+        updatePromises.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+
         // 等待所有更新完成
         await Promise.all(updatePromises);
-
-        // 处理父子关系
-        await updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue);
-
-        // 获取当前文档所在的项目数据库中的项目ID
-        await updateProjectRelation(direct.directid, itemID, to_db_id, viewValue);
         sy.showMessage('已添加事件', 2000, "info", "1");
         // 滴答更新
         api.handleDidaListEvent(to_db_id, direct.directid, itemID);

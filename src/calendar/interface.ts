@@ -33,6 +33,8 @@ export interface KBCalendarEvent {
         statusid: string;
         priority: string;
         priorityid: string;
+        // 是否被引用（作为子事件）
+        isReferenced: boolean;
         category: string;
         categoryid: string;
         tags?: string[]; // 多标签
