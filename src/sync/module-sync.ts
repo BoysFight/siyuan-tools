@@ -58,7 +58,7 @@ export class M_sync {
                     // 检查是否为主窗口或桌面客户端，只有主窗口或桌面客户端才执行同步
                     const isMainWindow = window.location.port === '6806' || window.location.port === '16806';
                     const isDesktopWindows = frontend === 'desktop' && backend === 'windows';
-                    
+
                     if (!isMainWindow && !isDesktopWindows) {
                         const currentPort = window.location.port;
                         const reason = `当前端口 ${currentPort} 不是主窗口(6806或16806)且不是Windows桌面客户端`;
@@ -72,13 +72,15 @@ export class M_sync {
                     // 处理滴答清单同步
                     if (this.didaSyncInstance["mydidaSyncEnabled"] &&
                         this.settingdata["docker-sync-auto-trigger-dida"]) {
-                            await this.didaSyncInstance.syncToDidaList();
+                            setTimeout(async () => {
+                                await this.didaSyncInstance.syncToDidaList();
+                            }, 1000);
                     }
 
                     // 处理 Docker 同步
                     if (this.dockerSyncEnabled) {
                         const currentHost = window.location.host;
-                        
+
                         if (url.includes(currentHost)) {
                             console.log("[Docker同步] 当前主机已包含在同步URL中，取消感知");
                         } else {
