@@ -832,7 +832,7 @@ export async function updatemainkey(params: UpdateMainKeyParams): Promise<any> {
                 const payload = {
                     avID: avID,
                     keyID: keyID,
-                    rowID: itemID,
+                    itemID: itemID,
                     value: {
                         block: {
                             content: content,
@@ -858,7 +858,7 @@ export async function updateAttrViewCell_pro(
     keyID: string,
     itemID: string,
     value: string | Date | ISelectOption[] | boolean | {
-        blockID: string,
+        itemID: string,
         content: string,
         oldrelation: {
             ids: string[],
@@ -1121,8 +1121,8 @@ async function processCellValue(value: any, type: string, endtime?: string): Pro
             break;
 
         case 'relation':
-            const { blockID, content, oldrelation, action } = value as {
-                blockID: string,
+            const { itemID, content, oldrelation, action } = value as {
+                itemID: string,
                 content: string,
                 oldrelation: {
                     ids: string[],
@@ -1132,16 +1132,16 @@ async function processCellValue(value: any, type: string, endtime?: string): Pro
             };
             const readyContents = transformBlockData(oldrelation.contents);
             if (action === 'add') {
-                if (!oldrelation.ids.includes(blockID)) {
-                    oldrelation.ids.push(blockID);
+                if (!oldrelation.ids.includes(itemID)) {
+                    oldrelation.ids.push(itemID);
                     readyContents.push({
-                        block: { content: content, id: blockID },
+                        block: { content: content, id: itemID },
                         isDetached: false,
                         type: "block"
                     });
                 }
             } else if (action === 'remove') {
-                const index = oldrelation.ids.indexOf(blockID);
+                const index = oldrelation.ids.indexOf(itemID);
                 if (index !== -1) {
                     oldrelation.ids.splice(index, 1);
                     readyContents.splice(index, 1);
@@ -1230,7 +1230,7 @@ async function getDateTimestamps(dateStr?: string): Promise<{ start: number, end
             end: now.getTime() + (settingdata['cal-time'] ? settingdata['cal-time'] : 0) * 60 * 60 * 1000
         };
     }
-    
+
     // 解析日期字符串
     const parseDate = (dateStr: string): Date => {
         if (dateStr.includes('T')) {
@@ -1344,4 +1344,25 @@ export async function addAttributeViewKey(
  */
 export async function batchReplaceAttributeViewBlocks(avID: string, mappings: Array<Record<string, string>>, isDetached: boolean = false): Promise<void> {
     return avManager.batchReplaceBlocks(avID, mappings, isDetached);
+}
+
+
+// **************************************** Tag ****************************************
+export interface TagItem {
+    name: string;
+    label: string;
+    children: TagItem[] | null;
+    type: string; // "tag"
+    depth: number;
+    count: number;
+}
+
+/**
+ * 获取标签列表
+ * POST /api/tag/getTag
+ * 默认载荷 { sort: 0 }
+ */
+export async function getTag(sort: number = 0): Promise<TagItem[]> {
+    const url = '/api/tag/getTag';
+    return request(url, { sort });
 }
