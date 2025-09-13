@@ -1201,7 +1201,6 @@ export async function updateParentChildRelation(
             const relationKeyID = await getKeyIDfromViewValue(viewValue, "子级", to_db_id);
             const parentListItemValue = await getBlockValuesFromViewValue(viewValue, parentListBlockId, to_db_id);
             const subItems = parentListItemValue.subItems
-            const parentListBlockItemID = parentListItemValue.event.itemID
 
             // 检查是否已存在该子项目关联
             if (relationKeyID && subItems && subItems.ids && subItems.ids.includes(itemID)) {
@@ -1210,6 +1209,7 @@ export async function updateParentChildRelation(
             }
 
             if (relationKeyID && subItems) {
+                const parentListBlockItemID = parentListItemValue.event.itemID
                 // 更新父事件的关联字段，保留原有关联
                 await api.updateAttrViewCell_pro(
                     parentListBlockId,
@@ -1217,7 +1217,7 @@ export async function updateParentChildRelation(
                     relationKeyID,
                     parentListBlockItemID,
                     {
-                        blockID: itemID,
+                        itemID: itemID,
                         content: title,
                         action: "add",
                         oldrelation: {
@@ -1414,7 +1414,7 @@ export async function updateProjectRelation(
                         projectKeyID,
                         itemID,
                         {
-                            blockID: newBlockIditemID[newBlockId as string],
+                            itemID: newBlockIditemID[newBlockId as string],
                             content: blockTitle,
                             action: "add",
                             oldrelation: {
