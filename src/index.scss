@@ -401,15 +401,17 @@ div.fc-view-harness.fc-view-harness-active>div>table>thead>tr>th {
 //悬浮
 
 .event-tooltip {
-    // z-index: 9999 !important;
     padding: 12px;
     min-width: 150px;
     max-width: 400px;
-    background-color: var(--b3-font-background6);
-    color: $text-color;
-    border: 1px solid $border-color;
+    background-color: rgba(var(--b3-theme-background-rgb), 0.90);
+    color: var(--b3-theme-on-background);
+    border: 1px solid var(--b3-theme-primary-lighter);
     border-radius: 8px;
     font-size: 0.8em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(18px);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
 }
 
 .event-tooltip h4 {

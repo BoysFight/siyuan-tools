@@ -565,6 +565,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                         category: item['分类']?.content || '无',
                         tags: Array.isArray(item['标签']?.content) ? item['标签'].content : [],
                         sub: item['子级'] || '',
+                        project: item['项目'] || '',
                         hasCircularRef: false,
                         isReferenced: false,
                         statusid: item['状态']?.keyID || '',

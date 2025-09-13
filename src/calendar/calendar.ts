@@ -847,21 +847,21 @@ export async function run(
             tippy(info.el, {
                 content: `
                     <div class="event-tooltip">
-                        <span class="event-tooltip__title"
-                            data-type="block-ref"
-                            data-id="${info.event.extendedProps.blockId || ''}"
-                        >
-                            ${info.event.title}
-                        </span>
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <span class="event-tooltip__title"
+                                data-type="block-ref"
+                                data-id="${info.event.extendedProps.blockId || ''}"
+                            >
+                                ${info.event.title}
+                            </span>
+                        </div>
                         <div class="event-tooltip__content">
                             <p><span class="event-tooltip__label">开始:</span> ${info.event.start?.toLocaleString()}</p>
                             <p><span class="event-tooltip__label">结束:</span> ${info.event.end?.toLocaleString() || "无"}</p>
-                            <p><span class="event-tooltip__label">状态:</span> ${statusText}</p>
-                            <p><span class="event-tooltip__label">优先级:</span> ${info.event.extendedProps.priority || "未设置"}</p>
-                            ${info.event.extendedProps.description ?
-                        `<p><span class="event-tooltip__label">描述:</span> ${info.event.extendedProps.description}</p>`
-                        : ''
-                    }
+                            <!-- <p><span class="event-tooltip__label">状态:</span> ${statusText}</p> -->
+                            <!-- <p><span class="event-tooltip__label">优先级:</span> ${info.event.extendedProps.priority || "未设置"}</p> -->
+                            ${info.event.extendedProps.project?.contents?.length || info.event.extendedProps.project?.content ? `<p><span class="event-tooltip__label">项目:</span> ${info.event.extendedProps.project?.contents?.map(item => `<span data-type="block-ref" data-id="${item.block?.id || ''}">${(item.block?.content || "").substring(0, 20)}${item.block?.content?.length > 20 ? '...' : ''}</span>`).join(', ') || info.event.extendedProps.project?.content && `<span data-type="block-ref" data-id="${info.event.extendedProps.project?.id || ''}">${(info.event.extendedProps.project?.content || "").substring(0, 20)}${info.event.extendedProps.project?.content?.length > 20 ? '...' : ''}</span>`}</p>` : ''}
+                            ${info.event.extendedProps.description ? `<p><span class="event-tooltip__label">描述:</span> ${info.event.extendedProps.description.substring(0, 50)}${info.event.extendedProps.description.length > 50 ? '...' : ''}</p>` : ''}
                             </div>
                         </div>
                     `,
@@ -871,7 +871,7 @@ export async function run(
                 zIndex: window.siyuan.zIndex,
                 appendTo: document.body,
                 theme: 'light',
-                delay: [1000, 0]
+                delay: [1000, 1000],
             });
         },
     });
