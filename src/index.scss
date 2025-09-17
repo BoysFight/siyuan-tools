@@ -113,6 +113,18 @@ div.fc-view-harness.fc-view-harness-active>div>table>thead>tr>th {
     .fc-scrollgrid {
         border-color: $border-color !important;
 
+        .fc-daygrid-day-frame {
+            height: 50px;
+            transition: all 5.0s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+
+            &:hover {
+                height: auto;
+                min-height: 50px;
+                max-height: 300px;
+                overflow-y: auto;
+            }
+        }
     }
 }
 
