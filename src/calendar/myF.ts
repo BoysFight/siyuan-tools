@@ -543,8 +543,20 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                             (!endDate || (endDate.getHours() === 0 && endDate.getMinutes() === 0))));
 
                 let kramdown = "";
+                let references = [];
                 if (eventBlockId && (item['主事件']?.content || false)) {
                     kramdown = (await api.getBlockKramdown(eventBlockId)).kramdown;
+
+                    // 解析块中的引用和标题
+                    const refRegex = /\{: (?:[^}]*)?id="([^"]+)"[^}]*\}\[([ Xx])\].*?\(\(([^\s]+) '([^']*)'\)\)/g;
+                    references = [...kramdown.matchAll(refRegex)].map(match => {
+                        return {
+                            id: match[3].trim(),
+                            content: match[4].trim(),
+                            type: 'ref',
+                            checked: match[2].toLowerCase() === 'x'
+                        };
+                    }).filter(ref => ref.id);
                 }
                 events.push({
                     id: eventBlockId, // FullCalendar 的事件 id 仍使用块 id 方便定位
@@ -566,6 +578,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                         tags: Array.isArray(item['标签']?.content) ? item['标签'].content : [],
                         sub: item['子级'] || '',
                         project: item['项目'] || '',
+                        references: references || [],
                         hasCircularRef: false,
                         isReferenced: false,
                         statusid: item['状态']?.keyID || '',
