@@ -830,12 +830,21 @@ export async function run(
                 }
             }
             // // steveTools.outlog(info);
-            if (info.event.extendedProps.source === 'qqcalendar') {
-                info.el.classList.add('qq-calendar-event');
+            // 添加事件图标
+            // const titleEl = info.el.querySelector('.fc-event-title');
+            if (titleEl) {
+                let icons = '';
+                // 如果有关联引用块，添加链接图标
+                if (info.event.extendedProps.references?.length || info.event.extendedProps.project?.contents?.length || info.event.extendedProps.project?.content) {
+                    icons += '<span class="referenced-icon" style="display: inline-flex; align-items: center; font-size: 0.9em; transform: translateY(0.05em);" title="包含关联引用"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="inherit" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect><path d="M10 7h4v10"></path></svg></span> ';
+                }
                 // 添加QQ日历图标
-                const titleEl = info.el.querySelector('.fc-event-title');
-                if (titleEl) {
-                    titleEl.insertAdjacentHTML('afterbegin', '<i class="qq-calendar-icon">📅</i> ');
+                if (info.event.extendedProps.source === 'qqcalendar') {
+                    info.el.classList.add('qq-calendar-event');
+                    icons += '<i class="qq-calendar-icon">📅</i> ';
+                }
+                if (icons) {
+                    titleEl.insertAdjacentHTML('afterbegin', icons);
                 }
             }
             // 添加提示框
@@ -872,7 +881,7 @@ export async function run(
                 zIndex: window.siyuan.zIndex,
                 appendTo: document.body,
                 theme: 'light',
-                delay: [1000, 1000],
+                delay: [1000, 600],
             });
         },
     });
