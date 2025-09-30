@@ -252,6 +252,11 @@ export async function run(
         // 日期点击处理
         //// 双击触发(可选)
         dateClick: async function (info) {
+            // 空筛选不允许创建事件
+            if (!filterViewId || filterViewId.length === 0) {
+                showMessage('未选择视图，无法创建事件。请先点击“视图选择”。', 3000, 'info');
+                return;
+            }
             // console.log('dateClick', info);
             const viewIDs = await myF.getViewId(av_ids)
             let rootid;
@@ -260,6 +265,11 @@ export async function run(
                 console.log("QQ日历事件创建");
             } else {
                 rootid = viewIDs.find(v => filterViewId.includes(v.viewId))?.rootid;
+            }
+            // 若当前选择的均为只读或无有效视图，阻止创建
+            if (!rootid) {
+                showMessage('当前选择的视图不支持直接创建事件', 3000, 'info');
+                return;
             }
             if (settingdata["cal-create-way"] === "1") {
                 await myF.createEventInDatabase(info.dateStr, calendar, viewValue, rootid);
@@ -540,8 +550,26 @@ export async function run(
             refreshButton: {
                 text: '刷新',
                 click: async function () {
-                    await calendar.refetchEvents();
-                    await refreshKanban();
+                    try {
+                        showMessage('正在刷新视图...', 3000);
+                        await calendar.refetchEvents();
+                        // 若启用了 QQ 日历并已配置日历 URL，则优先刷新 QQ 日历事件缓存
+                        const qqClient = moduleInstances['M_calendar']?.QQCalDAVClient as any;
+                        const qqCalUrl = settingdata['cal-qq-calendar-url'];
+                        if (qqClient && qqCalUrl) {
+                            try {
+                                showMessage('正在同步 QQ 日历…', 2000, 'info');
+                                await qqClient.updateEventsFromQQCalDAV(qqCalUrl);
+                            } catch (qqErr) {
+                                console.warn('同步 QQ 日历失败，将继续刷新本地视图', qqErr);
+                                showMessage('QQ 日历同步失败，已跳过', 3000, 'info');
+                            }
+                        }
+                    } finally {
+                        // 无论 QQ 日历是否成功，都刷新看板/日历视图
+                        refreshKanban();
+                        // await refreshKanban();
+                    }
                 }
             },
             // 统计功能按钮
@@ -579,15 +607,19 @@ export async function run(
             // const buttons = document.querySelectorAll('.fc-viewFilter-button');
             // buttons.forEach(btn => btn.textContent = viewName);
             try {
+                // 空筛选不显示任何事件
+                if (!filterViewId || filterViewId.length === 0) {
+                    successCallback([]);
+                    return;
+                }
                 let allEvents = [];
                 /////////////////////QQ日历////////////////////////
                 try {
                     if (moduleInstances['M_calendar']?.QQCalDAVClient) {
                         const qqEvents = moduleInstances["M_calendar"].QQCalDAVClient?.getEventsFromQQCalDAV();
                         if (qqEvents && Array.isArray(qqEvents)) {
-                            // 如果有筛选视图且不是要显示所有视图，检查是否应该显示QQ日历事件
-                            const showQQEvents = filterViewId.length === 0 ||
-                                filterViewId.includes('qqcalendar'); // 假设'qqcalendar'是QQ日历视图的ID
+                            // 检查是否应该显示QQ日历事件（仅当筛选包含该视图时）
+                            const showQQEvents = filterViewId.includes('qqcalendar');
 
                             if (showQQEvents) {
                                 allEvents = allEvents.concat(qqEvents);
@@ -603,9 +635,8 @@ export async function run(
                     if (moduleInstances['M_calendar']?.icsSubscription) {
                         const icsEvents = moduleInstances['M_calendar'].icsSubscription.getEvents();
                         if (icsEvents && Array.isArray(icsEvents)) {
-                            // 检查是否需要根据视图筛选
-                            const showIcsEvents = filterViewId.length === 0 ||
-                                filterViewId.includes('icsSubscription'); // 使用适当的ID标识ICS订阅视图
+                            // 检查是否需要根据视图筛选（仅当筛选包含该视图时）
+                            const showIcsEvents = filterViewId.includes('icsSubscription'); // 使用适当的ID标识ICS订阅视图
                             if (showIcsEvents) {
                                 console.log(`加载了 ${icsEvents.length} 个ICS订阅日历事件`);
                                 // 为每个ICS订阅事件添加不可拖拽属性和标识
@@ -664,28 +695,33 @@ export async function run(
                 }
 
                 /////////////////////思源////////////////////////
-                // 1. 获取引用ID
+                // 1. 获取引用ID（普通事件）
                 av_ids = await moduleInstances['M_calendar'].getAVreferenceid();
-                const av_ids_zq = await moduleInstances['M_calendar'].getAVreferenceid("周期");
-                if (!av_ids?.length) {
-                    console.warn('No reference IDs found');
+                const showRecurring = filterViewId.includes('recurring');
+                // 仅当既没有普通视图引用、又未选择任何特殊来源（QQ/ICS/Lifelog/周期）时才早退
+                if (!av_ids?.length && !filterViewId.includes('lifelog') && !filterViewId.includes('qqcalendar') && !filterViewId.includes('icsSubscription') && !showRecurring) {
+                    console.warn('No reference IDs found and no view selected');
                     successCallback([]);
                     return;
                 }
 
                 // 2. 获取视图ID
-                const viewIDs_zq = await myF.getViewId(av_ids_zq);
-                const viewIDs = await myF.getViewId(av_ids);
+                const viewIDs = av_ids?.length ? await myF.getViewId(av_ids) : [];
+                // 仅在需要显示周期事件时获取周期视图ID
+                const av_ids_zq = showRecurring ? await moduleInstances['M_calendar'].getAVreferenceid("周期") : [];
+                const viewIDs_zq = (showRecurring && av_ids_zq?.length) ? await myF.getViewId(av_ids_zq) : [];
 
                 // 修改视图ID检查逻辑
-                if (!viewIDs?.length && !filterViewId.includes('lifelog') && !filterViewId.includes('qqcalendar') && !filterViewId.includes('icsSubscription')) {
+                if (!viewIDs?.length && !filterViewId.includes('lifelog') && !filterViewId.includes('qqcalendar') && !filterViewId.includes('icsSubscription') && !showRecurring) {
                     console.warn('No view IDs found and no special views selected');
                     successCallback([]);
                     return;
                 }
 
                 // 3. 获取视图数据
-                viewValue_zq = await myF.getViewValue(viewIDs_zq, true);
+                // viewValue = viewIDs?.length ? await myF.getViewValue(viewIDs) : [];
+                viewValue_zq = (showRecurring && viewIDs_zq?.length) ? await myF.getViewValue(viewIDs_zq, true) : [];
+                // console.log("View data:", viewValue, "周期", viewValue_zq);
 
                 // 3.5 先筛选 viewIDs，再获取视图数据
                 const filteredViewIDs = viewIDs.filter(item => filterViewId.includes(item.viewId));

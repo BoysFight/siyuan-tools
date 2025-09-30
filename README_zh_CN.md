@@ -22,40 +22,50 @@ STEVETOOLS
 1. 互联日程管理：   （[相关演示](https://ld246.com/article/1737464243546?r=stevehfut)） [简单教程](https://ld246.com/article/1738929421466?r=stevehfut)   [视频教程](https://ld246.com/article/1739584703693)  
 和思源深度融合的日历视图和看板视图, 同时用于生成日历文件ics，实现日程同步到支持url订阅的日历软件中，比如thunderbird，小米日历，苹果日历等，支持订阅ics链接导入其他软件日程，支持与滴答清单的初步联动。     
 2. docker同步感知：    
-win端s3同步后，docker端感知s3同步。 
+win端s3同步后，docker端感知s3同步。  
 3. ai网页侧边栏：    
 嵌入了一些ai的网页，方便使用。    
 4. 媒体资源压缩：  
 压缩媒体资源后再导入思源。  
 5. tldraw白板：  
-模仿AFFINE，深度绑定思源的tldraw白板，支持嵌入思源块和链接跳转
+模仿AFFINE，深度绑定思源的tldraw白板，支持嵌入思源块和链接跳转  
 6. Lifelog：（开源替代，如需更好体验请使用[叶归插件](https://simplest-frontend.feishu.cn/docx/B3NndXHi7oLLXJxnxQmcczRsnse)）  
 用法基本和叶归插件一样，由[BoysFight](https://github.com/BoysFight) PR实现。  
-7. WPS联动：
+7. WPS联动：  
 方便在思源中使用WPS（office文件嵌入，预览、编辑、同步），多维表格数据导入，图片上传。
+8. SQL聚合查询：  
+可视化生成SQL语句，查询思源数据库，支持多条件筛选，排序等功能，支持结果预览和嵌入块。
 
 #### 开发动力来源[打赏](https://pic.imgdb.cn/item/6751b929d0e0a243d4de55a7.png) [star](https://github.com/loonghfut/siyuan-steve-tools) 
 
 #### 更新日志:
 
 
-### v0.14.0 (2025年09月08日)
-- 兼容API变更https://github.com/siyuan-note/siyuan/issues/15727 (loonghfut)
-- feat: 添加聚合模块及其设置支持 (loonghfut)
-- https://github.com/loonghfut/siyuan-steve-tools/issues/98 (loonghfut)
-- feat: 添加四象限视图设置支持，允许用户自定义初始视图和工具栏按钮 (loonghfut)
-- feat: 添加可视化 SQL 生成器及其 UI，支持嵌入式模式的 SQL 查询构建 (loonghfut)
-- feat: 更新可视化 SQL 生成器 UI，添加更多筛选条件和智能添加功能 (loonghfut)
-- feat: 更新可视化 SQL 生成器 UI，优化对话框样式和自定义按钮功能 (loonghfut)
-- feat: 添加状态持久化功能 (loonghfut)
-- ui适配思源配色 (loonghfut)
-- feat: 添加获取标签列表功能及相关接口 (loonghfut)
-- feat: 更新可视化 SQL 生成器 UI，添加标签下拉框及异步加载功能 (loonghfut)
-- 优化SQL面板细节 (loonghfut)
-- 优化代码结构 (loonghfut)
-- feat: 增加protyleSlash，优化 UI 组件及设置选项 (loonghfut)
-- feat: 更新可视化 SQL 生成器，调整 limit 输入最大值并优化 UI 反馈 (loonghfut)
-- feat: 更新插件版本至 0.14.0 (loonghfut)
+### v0.16.0 (2025年09月28日)
+- 优化部分逻辑 (loonghfut)
+- 改进持久化逻辑 (loonghfut)
+- 优化界面 (loonghfut)
+- Implement code changes to enhance functionality and improve performance (loonghfut)
+- 优化颜色设置逻辑，移除文本输入，改为调色盘控制，并重构相关渲染功能 (loonghfut)
+- 增加拖拽手柄 (loonghfut)
+- 增加复制图表块 (loonghfut)
+- 删除部分无用代码 (loonghfut)
+- 数据库图表功能性完成 (loonghfut)
+- 记录点 (loonghfut)
+- 记录点2 (loonghfut)
+- 优化细节交互 (loonghfut)
+- 颜色设置优化 (loonghfut)
+- renderAttributeView (loonghfut)
+- 优化界面 (loonghfut)
+- 兼容更多数据类型 (loonghfut)
+- 优化数据库选择交互 (loonghfut)
+- 强化部分逻辑 (loonghfut)
+- 优化刷新视图功能，增加对 QQ 日历事件缓存的同步处理 (loonghfut)
+- 兼容卡片视图数据 (loonghfut)
+- 增加时间分桶功能，支持按年、月、日、小时进行数据分组 (loonghfut)
+- 增加预览置顶功能，允许用户固定结果预览区域 (loonghfut)
+- 美化设置界面 (loonghfut)
+- 更新版本号至0.16.0 (loonghfut)
 
 
 更多详见[提交记录](https://github.com/loonghfut/siyuan-steve-tools/commits/main-2/)
