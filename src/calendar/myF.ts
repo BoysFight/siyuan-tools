@@ -64,6 +64,24 @@ export function resolveAttrTargetId(props: { itemID?: string; blockId: string })
     return props.itemID || props.blockId;
 }
 
+// 获取当前时间并按指定分钟间隔四舍五入，返回 YYYY-MM-DDTHH:mm
+function getNowRounded(intervalMinutes: number = 30): string {
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const rounded = Math.round(minutes / intervalMinutes) * intervalMinutes;
+    if (rounded >= 60) {
+        now.setHours(now.getHours() + 1, 0, 0, 0);
+    } else {
+        now.setMinutes(rounded, 0, 0);
+    }
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
 export const statusMap = new Proxy({
     // 保留原有的映射关系作为已知状态
     "未完成": "todo",
@@ -809,16 +827,14 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
     }
     if (direct.isdirect) {
         // console.log("createEventInDatabase:::", await checkBlockInEvent(direct.directid, to_db_id));
-        // const itemID = await api.generateSiyuanID() as string; //直接使用块ID作为itemID
-        const itemID = direct.directid; //直接使用块ID作为itemID
-        if (await checkBlockInEvent(direct.directid, to_db_id)) {
-            console.log("目标数据库已存在此事件");
-            return;
-        }
-        //块时间处理
+        // 先检查是否已存在于目标数据库
+        const existsInDB = await checkBlockInEvent(direct.directid, to_db_id);
+        // 获取块内容用于解析
         const blockdata = await api.getBlockKramdown(direct.directid);
         // console.log("blockdata:::", blockdata.kramdown);
-        const ce = runblockdata_for_time(blockdata?.kramdown);
+        // const ce = runblockdata_for_time(blockdata?.kramdown);
+        // 改为直接取当前时间，并按 30 分钟间隔取最近的时间
+        const ce = getNowRounded(30);
         const minsub = runblockdata_for_sub(blockdata?.kramdown);
         const categorie = runblockdata_for_category(blockdata?.kramdown);
         const tags = runblockdata_for_tags(blockdata?.kramdown);
@@ -831,12 +847,8 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         }
         if (ce) {
             dateStr = ce;
-            // console.log("ce:::", ce);
         }
-        // console.log("dateStr:::", dateStr);
-        //块时间处理
-
-        await api.addBlockToDatabase_pro(direct.directid, to_db_id, itemID);
+        // 预先获取所需 keyID，避免分支中重复获取
         const timeKeyID = await getKeyIDfromViewValue(viewValue, '开始时间', to_db_id);
         const statusKeyID = await getKeyIDfromViewValue(viewValue, '状态', to_db_id);
         const checkboxKeyID = await getKeyIDfromViewValue(viewValue, '主事件', to_db_id);
@@ -846,6 +858,33 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         const noteKeyID = await getKeyIDfromViewValue(viewValue, '描述', to_db_id);
         const titleKeyID = await getKeyIDfromViewValue(viewValue, '事件', to_db_id);
         const priorityKeyID = await getKeyIDfromViewValue(viewValue, '优先级', to_db_id);
+
+        // 根据是否已存在决定更新策略
+        let itemID: string = direct.directid; // 默认使用块ID作为 itemID（用于创建场景）
+
+        if (existsInDB) {
+            console.log("目标数据库已存在此事件，仅更新非关键字段");
+            // 映射获取已存在的 itemID
+            itemID = await api.getAttributeViewItemIDsByBoundIDs(to_db_id, [direct.directid]).then(data => data[direct.directid]);
+            if (!itemID) {
+                sy.showMessage('未能获取已存在事件的数据库行ID', 2000, 'error');
+                return true;
+            }
+
+            const secondaryUpdates: Promise<any>[] = [];
+            // 关系类更新
+            secondaryUpdates.push(updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue));
+            secondaryUpdates.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+
+            await Promise.all(secondaryUpdates);
+            // 滴答更新
+            // api.handleDidaListEvent(to_db_id, direct.directid, itemID);
+            sy.showMessage('已更新事件的非关键字段', 2000, 'info', '1');
+            return true;
+        }
+
+        // 不存在：正常创建并绑定到数据库
+        await api.addBlockToDatabase_pro(direct.directid, to_db_id, itemID);
         if (titleKeyID && title) {
             console.log("titleKeyID:::", titleKeyID);
             await api.updatemainkey({
@@ -856,40 +895,44 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
                 content: title,
             });
         }
-        // 批量更新：不使用 await，让请求积累到队列中
-        const updatePromises: Promise<any>[] = [];
+        // 拆分为优先更新与后台更新，加快前端响应
+        const primaryUpdates: Promise<any>[] = [];
+        const secondaryUpdates: Promise<any>[] = [];
 
+        // 后台：分类、标签、备注
         if (categoryKeyID && categorie) {
             const categoryData: ISelectOption[] = [{ content: categorie }];
-            updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, categoryKeyID, itemID, categoryData, "select"));
+            secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, categoryKeyID, itemID, categoryData, "select"));
         }
         if (tagsKeyID && tags) {
             const tagsData: ISelectOption[] = tags.map(tag => ({ content: tag }));
-            updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, tagsKeyID, itemID, tagsData, "mSelect"));
+            secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, tagsKeyID, itemID, tagsData, "mSelect"));
         }
         if (noteKeyID && note) {
-            updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, noteKeyID, itemID, note, "text"));
+            secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, noteKeyID, itemID, note, "text"));
         }
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, timeKeyID, itemID, dateStr, "date"));
 
+        // 优先：时间、状态、全天（高优先级）
+        primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, timeKeyID, itemID, dateStr, "date", undefined, 'high'));
         const selectdata: ISelectOption[] = [{ content: status }];
-        // console.log("selectdata", selectdata);
-        // 2025/7/5新增默认添加优先级
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, itemID, selectdata, "select"));
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, checkboxKeyID, itemID, ismain, "checkbox"));
-        // 默认设置为非全天事件
+        primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, itemID, selectdata, "select", undefined, 'high'));
         if (allDayKeyID) {
-            updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, allDayKeyID, itemID, false, "checkbox"));
+            primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, allDayKeyID, itemID, false, "checkbox", undefined, 'high'));
         }
 
-        // 将父子关系和项目关联更新也加入到Promise数组中
-        updatePromises.push(updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue));
-        updatePromises.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+        // 后台：优先级、主事件标记、父子关系、项目关系
+        secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
+        secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, checkboxKeyID, itemID, ismain, "checkbox"));
+        secondaryUpdates.push(updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue));
+        secondaryUpdates.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
 
-        // 等待所有更新完成
-        await Promise.all(updatePromises);
+        // 先等待优先更新完成，保障关键字段就绪
+        await Promise.all(primaryUpdates);
         sy.showMessage('已添加事件', 2000, "info", "1");
+        refreshKanban();
+        // setTimeout(() => calendar?.refetchEvents(), 1000);
+        // 其余后台异步执行，不阻塞交互
+        void Promise.all(secondaryUpdates).catch(err => console.warn("后台属性更新失败", err));
         // 滴答更新
         api.handleDidaListEvent(to_db_id, direct.directid, itemID);
         return true;

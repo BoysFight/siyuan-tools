@@ -867,7 +867,8 @@ export async function updateAttrViewCell_pro(
         action: string
     },
     type: 'date' | 'select' | 'relation' | 'checkbox' | 'text' | 'mSelect' | 'url',
-    endtime?: string
+    endtime?: string,
+    queuePriority: 'high' | 'normal' = 'normal'
 ): Promise<any> {
     return new Promise((resolve, reject) => {
         // 将所有请求添加到队列中
@@ -879,6 +880,7 @@ export async function updateAttrViewCell_pro(
             value,
             type,
             endtime,
+            queuePriority,
             resolve,
             reject
         });
@@ -931,13 +933,31 @@ async function processQueue() {
     // 按 avID 分组处理
     const groupedUpdates = new Map<string, Array<typeof cellUpdateQueue[0]>>();
 
-    // 取出所有待处理的更新
+    // 优先处理高优先级更新；如果没有，则处理全部
+    const hasPriority = cellUpdateQueue.some(u => (u as any).queuePriority === 'high');
     const allUpdates: Array<typeof cellUpdateQueue[0]> = [];
-    while (cellUpdateQueue.length > 0) {
-        const update = cellUpdateQueue.shift();
-        if (!update) continue;
-        allUpdates.push(update);
+    if (hasPriority) {
+        // 从队列中摘出高优先级项进行本轮处理
+        for (let i = cellUpdateQueue.length - 1; i >= 0; i--) {
+            const u = cellUpdateQueue[i] as any;
+            if (u.queuePriority === 'high') {
+                allUpdates.push(cellUpdateQueue[i]!);
+                cellUpdateQueue.splice(i, 1);
+            }
+        }
+        // 反转以维持大致原始入队顺序
+        allUpdates.reverse();
+        console.log(`🚩 [队列处理] 本轮仅处理高优先级项目，共 ${allUpdates.length} 个`);
+    } else {
+        // 取出所有待处理的更新
+        while (cellUpdateQueue.length > 0) {
+            const update = cellUpdateQueue.shift();
+            if (!update) continue;
+            allUpdates.push(update);
+        }
+    }
 
+    for (const update of allUpdates) {
         if (!groupedUpdates.has(update.avID)) {
             groupedUpdates.set(update.avID, []);
         }
@@ -1014,14 +1034,23 @@ async function processQueue() {
     }
 
     isProcessingQueue = false;
-    console.log(`✅ [队列处理] 队列处理完成，共处理了 ${totalItems} 个单元格更新`);
+    console.log(`✅ [队列处理] 队列处理完成，共处理了 ${allUpdates.length} 个单元格更新`);
+
+    // 如果队列中还有剩余（低优先级或后续加入），安排下一轮处理
+    if (cellUpdateQueue.length > 0 && !cellUpdateQueueTimer) {
+        cellUpdateQueueTimer = setTimeout(() => {
+            processQueue();
+            cellUpdateQueueTimer = null;
+            cellUpdateQueueStartTime = null;
+        }, getQueueDelay());
+    }
 }
 
 // 处理批量更新完成后的后续操作
 async function handlePostBatchUpdateActions(avID: string) {
     try {
         // 1. 触发视图刷新
-        await refreshAttributeView(avID);
+        // await refreshAttributeView(avID);
 
         //有BUG会漏事件和重复事件
         // // 2. 判断是否为滴答清单事件并处理
