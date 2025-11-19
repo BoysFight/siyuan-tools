@@ -44,11 +44,15 @@
     import { needsRefresh } from "./settings/refresh";
     function isrefresh(setting) { if (needsRefresh(setting)) myapi.refresh(); }
 
-    async function saveSettings() {
+    async function saveSettings(skipBgRefresh = false) {
         await plugin.saveData(myfile, settings);
         // 更新 LifeLog 模块的设置
         if (moduleInstances["M_lifelog"]) {
             moduleInstances["M_lifelog"].updateSettings(settings);
+        }
+        if (moduleInstances["M_Minutiae"]) {
+            // pass option to avoid switching background when called during initial load
+            moduleInstances["M_Minutiae"].updateSettings(settings, { skipBgRefresh });
         }
     }
 
@@ -79,7 +83,8 @@
         }));
         await resolveDynamicOptions(ctx);
         updateGroupItems();
-        await saveSettings();
+    // Persist merged settings but avoid triggering background switch during initial open
+    await saveSettings(true);
         focusGroup = groups[0]?.name || "";
         // 初始应用页面反色
         if (settings["invert-page-enable"]) {

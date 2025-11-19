@@ -1,27 +1,28 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
 import { createRoot } from 'react-dom/client'; // 添加这个导入
 import { CardShapeTool } from './CardShape/CardShapeTool'
 import { CardShapeUtil } from './CardShape/CardShapeUtil'
+import { SingleBlockShapeTool } from './SingleBlockShape/SingleBlockShapeTool'
+import { SingleBlockShapeUtil } from './SingleBlockShape/SingleBlockShapeUtil'
 import { components, uiOverrides } from './ui-overrides'
 import {
     Tldraw,
     TldrawOptions,
-    TLUiOverrides,
     defaultShapeUtils,
     TLStore,
     Editor,
-    createShapeId,
     TLShapeId,
 } from '@tldraw/tldraw';
 import '@tldraw/tldraw/tldraw.css';
 import '../custom-tldraw.css';
 import { getAssetUrls } from '@tldraw/assets/selfHosted'
-import { cardShapeMigrations, initCardsWithBlockIds } from './CardShape/card-shape-migrations';
+import { initCardsWithBlockIds } from './CardShape/card-shape-migrations';
 import { createTLStore, getSnapshot, loadSnapshot, throttle } from '@tldraw/tldraw';
 import * as api from '@/api/api';
 import { SlideShapeUtil } from './SlideShape/SlideShapeUtil';
 import { SlideShapeTool } from './SlideShape/SlideShapeTool';
+import { captureSlideScreenshot, CaptureSlideScreenshotOptions, CaptureSlideScreenshotResult } from './SlideShape/captureSlideScreenshot';
+import { getSlides } from './SlideShape/useSlides';
 import { ICardShape } from './CardShape/card-shape-types';
 import { showMessage } from 'siyuan';
 import { settingdata } from '@/index';
@@ -33,8 +34,8 @@ const assetUrls = getAssetUrls({ baseUrl: 'plugins/siyuan-steve-tools/asset/' })
 // There's a guide at the bottom of this file!
 
 // [1]
-const customShapeUtils = [...defaultShapeUtils, CardShapeUtil, SlideShapeUtil, MindMapNodeShapeUtil]
-const customTools = [CardShapeTool, SlideShapeTool, MindMapNodeTool]
+const customShapeUtils = [...defaultShapeUtils, CardShapeUtil, SingleBlockShapeUtil, SlideShapeUtil, MindMapNodeShapeUtil]
+const customTools = [CardShapeTool, SingleBlockShapeTool, SlideShapeTool, MindMapNodeTool]
 /**
  * TldrawManager类，用于管理tldraw实例和操作
  */
@@ -42,7 +43,6 @@ export class TldrawManager {
     private id: string;
     private container: HTMLElement;
     private tldrawComponent
-    private customTools: any[] = [];
     private root: any; // 添加 root 属性
     private blockIds: string[] = [];
     private store: TLStore; // 存储 TLDraw 的数据
@@ -50,6 +50,9 @@ export class TldrawManager {
     private storageKey: string; // 存储键值
     // 在 TldrawManager 类中添加一个标志
     private dropHandled;
+    // 最小字段：保存 dragstart/dragend 处理函数引用
+    private _dragStartHandler: ((e: DragEvent) => void) | null = null;
+    private _dragEndHandler: (() => void) | null = null;
     private applyingRemoteChanges = false;
     private title: string;
 
@@ -170,6 +173,7 @@ export class TldrawManager {
         const store = this.store;
         api.setBlockAttrs(id, {
             'custom-sttools-tldraw': '1',
+            'bookmark': 'st-tldraw'
         })
         // 生成 tldraw 组件
         const tldrawComponent = (
@@ -178,6 +182,7 @@ export class TldrawManager {
                 data-tldraw-id={this.id}
                 data-tldraw-title={this.title}>
                 <Tldraw
+                    licenseKey="tldraw-2026-01-28/WyJzTmo2UUJDRSIsWyIqIl0sMTYsIjIwMjYtMDEtMjgiXQ.TPO1s+ITkaa0Ou5Xt1vXDVgtuRkEmOLWH+bM+P/GNjaiw0f158QNVK97eCRJTFGF9Lpv1RoaJrvGX4mV+Ioxwg"
                     store={store}
                     shapeUtils={customShapeUtils}
                     tools={customTools}
@@ -240,7 +245,8 @@ export class TldrawManager {
 
                             // 解析拖拽数据
                             const blockIdo_rigin = e.dataTransfer!.types[0];
-                            // console.log('拖拽的数据类型', e);
+                            console.log('拖拽的数据类型', e);
+                            console.log('拖拽的数据类型', blockIdo_rigin);
                             // 使用正则表达式提取块ID
                             let blockId = '';
                             if (blockIdo_rigin.startsWith('application/siyuan')) {
@@ -250,11 +256,14 @@ export class TldrawManager {
                                     console.log('从数据类型中提取的块ID', blockId);
                                 }
                             }
+                            if (blockIdo_rigin.startsWith('application/siyuan-file') && (window as any).__st_dragNodeId) {
+                                blockId = (window as any).__st_dragNodeId;
+                            }
                             if (!blockId) {
                                 console.log('未能识别拖拽的块ID');
                                 return;
                             }
-
+                            console.log('识别到的块ID', blockId);
                             // 获取鼠标在画布上的位置
                             const { x, y } = editor.screenToPage({
                                 x: e.clientX,
@@ -265,35 +274,71 @@ export class TldrawManager {
                             let aproblock: string;
                             if (blockIdo_rigin.includes('nodeheading')) {
                                 aproblock = blockId;
-                                const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${aproblock}&title=${this.title}`;
+                                const link = `https://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${aproblock}&title=${this.title}`;
                                 const content = (await api.getBlockByID(blockId)).markdown;
-                                await api.updateBlock("markdown",`${content}[🔗](${link})`, aproblock)
-                            }
-                            else {
+                                await api.updateBlock("markdown", `${content}[🔗](${link})`, aproblock)
+                            } else if (blockIdo_rigin.startsWith('application/siyuan-file')) {
+                                aproblock = blockId;
+                                await api.prependBlock("markdown", `((${blockId} '${(window as any).__st_dragName || ''}'))`, this.id)
+                            } else {
                                 aproblock = idid as string;
-                                const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${aproblock}&title=${this.title}`;
-                                await api.insertBlock("markdown", `##### [${timestamp}](${link})[🔗](${link})
-{: id="${idid}" custom-st-tldraw="1" }`, blockId)
+                                const link = `https://plugins/siyuan-steve-tools/?rootid=${this.id}&blockid=${aproblock}&title=${this.title}`;
+                                await api.insertBlock("markdown", `###### ${timestamp}[🔗](${link})
+{: id="${idid}" custom-st-tldraw="1"}`, blockId)
                             }
                             // 创建新的Card形状
                             // console.log("创建新的卡片形状",  aproblock[0].doOperations[0].id);
-                            editor.createShape({
-                                type: 'card',
-                                x: x, // 默认宽度的一半，使形状中心在鼠标位置
-                                y: y, // 默认高度的一半
-                                props: {
-                                    w: 300,
-                                    h: 300,
-                                    color: 'black',
-                                    showMask: true,
-                                    blockId: aproblock,
-                                },
-                            });
+                            if (blockIdo_rigin.startsWith('application/siyuan-file')) {
+                                editor.createShape({
+                                    type: 'card',
+                                    x: x, // 默认宽度的一半，使形状中心在鼠标位置
+                                    y: y, // 默认高度的一半
+                                    props: {
+                                        w: 500,
+                                        h: 700,
+                                        color: 'black',
+                                        showMask: true,
+                                        blockId: aproblock,
+                                        isMain: true,
+                                    },
+                                });
+                            } else {
+                                editor.createShape({
+                                    type: 'card',
+                                    x: x, // 默认宽度的一半，使形状中心在鼠标位置
+                                    y: y, // 默认高度的一半
+                                    props: {
+                                        w: 300,
+                                        h: 300,
+                                        color: 'black',
+                                        showMask: true,
+                                        blockId: aproblock,
+                                    },
+                                });
+                            }
                             // api.setBlockAttrs(blockId, {
                             //     'custom-st-tldraw': '1',
                             // });
                             // console.log(`已在(${x}, ${y})位置创建包含块ID ${blockId} 的卡片`);
                         };
+
+                        // 注册最小 dragstart/dragend，用于捕获同页拖拽元素的 data-node-id
+                        this._dragStartHandler = (ev: DragEvent) => {
+                            const el = ev.target as HTMLElement | null;
+                            try {
+                                (window as any).__st_dragNodeId = el ? (el.dataset?.nodeId || el.getAttribute('data-node-id')) : null;
+                                (window as any).__st_dragName = el ? (el.dataset?.name || el.getAttribute('data-name')) : null;
+                            } catch (err) {
+                                (window as any).__st_dragNodeId = null;
+                                (window as any).__st_dragName = null;
+                            }
+                        };
+                        this._dragEndHandler = () => {
+                            try { (window as any).__st_dragNodeId = null; } catch (e) { }
+                            try { (window as any).__st_dragName = null; } catch (e) { }
+                        };
+                        document.addEventListener('dragstart', this._dragStartHandler, true);
+                        document.addEventListener('dragend', this._dragEndHandler, true);
 
                         // 添加拖放事件监听器
                         container.addEventListener('drop', handleDrop);
@@ -355,7 +400,7 @@ export class TldrawManager {
         const sessionId = Date.now().toString() + Math.random().toString(36).slice(2);
 
         // 监听本地变更并广播
-        const unlisten = this.store.listen(
+        this.store.listen(
             (update) => {
                 // 如果当前正在应用远程更改，不广播以避免循环
                 if (this.applyingRemoteChanges) return;
@@ -406,7 +451,7 @@ export class TldrawManager {
         // 使用节流函数确保不会过于频繁地保存
         const throttledSave = throttle(() => {
             this.saveData();
-        }, 2000); // 2秒节流
+        }, 3000); // 3秒节流
 
         // 监听存储变化
         this.store.listen(throttledSave);
@@ -636,6 +681,21 @@ export class TldrawManager {
         // 清空容器
         this.container.innerHTML = '';
 
+        // 移除我们注册的最小 drag 监听器并清理全局临时值
+        try {
+            if (this._dragStartHandler) {
+                document.removeEventListener('dragstart', this._dragStartHandler, true);
+                this._dragStartHandler = null;
+            }
+            if (this._dragEndHandler) {
+                document.removeEventListener('dragend', this._dragEndHandler, true);
+                this._dragEndHandler = null;
+            }
+            try { (window as any).__st_dragNodeId = null; } catch (e) { }
+        } catch (err) {
+            console.warn('移除 drag 监听器出错', err);
+        }
+
         // 销毁React根节点
         if (this.root) {
             this.root.unmount();
@@ -653,12 +713,44 @@ export class TldrawManager {
         if (!this.editor) return null;
 
         const shapes = this.editor.getCurrentPageShapes();
+        // console.log("查找形状", blockId, shapes);
         const cardShape = shapes.find(shape =>
-            shape.type === 'card' &&
+            (shape.type === 'card' || shape.type === 'single-block' || shape.type === 'slide') &&
             (shape as ICardShape).props?.blockId === blockId
         );
 
         return cardShape?.id || null;
+    }
+
+    public async captureSlideScreenshot(slideId: TLShapeId, options: CaptureSlideScreenshotOptions = {}): Promise<CaptureSlideScreenshotResult | null> {
+        if (!this.editor) {
+            throw new Error('Editor instance not initialized');
+        }
+        const result = await captureSlideScreenshot(this.editor, slideId, options);
+        if (options.updateShape && result) {
+            await this.saveData();
+        }
+        return result;
+    }
+
+    public async captureAllSlideScreenshots(options: CaptureSlideScreenshotOptions = {}): Promise<Map<TLShapeId, CaptureSlideScreenshotResult | null>> {
+        if (!this.editor) {
+            throw new Error('Editor instance not initialized');
+        }
+        const results = new Map<TLShapeId, CaptureSlideScreenshotResult | null>();
+        const slides = getSlides(this.editor);
+        let hasUpdates = false;
+        for (const slide of slides) {
+            const result = await captureSlideScreenshot(this.editor, slide.id, options);
+            results.set(slide.id, result);
+            if (result) {
+                hasUpdates = true;
+            }
+        }
+        if (options.updateShape && hasUpdates) {
+            await this.saveData();
+        }
+        return results;
     }
 
     /**

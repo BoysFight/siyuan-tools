@@ -1,5 +1,6 @@
 import { Calendar } from '@fullcalendar/core';
 import interactionPlugin from '@fullcalendar/interaction';
+import { createUnscheduledPanelController } from './function/unscheduled';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
@@ -16,7 +17,7 @@ import { moduleInstances } from '@/index';
 import solarLunar from 'solarlunar';
 import * as myF from './myF';
 import { showMessage } from 'siyuan';
-import { createFloatingCalendar } from './createFloatingCalendar';
+import { createFloatingCalendar } from './function/createFloatingCalendar';
 import { updateAttrViewCell_pro } from '@/api/api';
 
 //审查ok
@@ -41,6 +42,9 @@ export let viewId = "";
 // let ishandrefetchEvents = true;
 //用于保存原始的时间槽间隔
 let lastSavedLifelogSlotDuration: string;
+const calendarResizeHandlers = new WeakMap<HTMLElement, () => void>();
+const calendarResizeObservers = new WeakMap<HTMLElement, ResizeObserver>();
+const MIN_CALENDAR_HEIGHT = 320; // Avoid collapsing the calendar when layout space is tight.
 export async function update_av_ids() {
     av_ids = await moduleInstances['M_calendar'].getAVreferenceid();
 }
@@ -59,7 +63,7 @@ export async function run(
     initialView = 'dayGridMonth',
     S_viewID = "",
     cleft = 'prev,next today viewFilter,statsButton,refreshButton',
-    cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban,priorityQuadrant',
+    cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban,priorityQuadrant,planButton',
     ccenter = 'title',
     elementca?: any,
 ) {
@@ -81,6 +85,11 @@ export async function run(
     } catch (e) {
         console.warn('读取日历视图设置失败，使用默认值', e);
     }
+    const rightSegments = cright.split(',').map(segment => segment.trim()).filter(Boolean);
+    // if (!rightSegments.includes('planButton')) {
+    //     rightSegments.push('planButton');
+    // }
+    cright = rightSegments.join(',');
     // 如果有指定的S_viewID则使用，否则从配置中获取
     if (S_viewID) {
         filterViewId = [S_viewID];
@@ -123,8 +132,20 @@ export async function run(
         return;
     }
 
+    // 待安排面板控制器（封装渲染、拖拽与徽标更新）
+    const unscheduled = createUnscheduledPanelController(
+        calendarEl,
+        () => myF.getUnscheduledEvents()
+    );
+    const updatePlanButtonLabel = () => unscheduled.updatePlanButtonLabel(myF.getUnscheduledEvents().length);
+
     // 添加鼠标滚轮事件监听器
     calendarEl.addEventListener('wheel', (e) => {
+        const target = e.target as HTMLElement | null;
+        // 如果事件发生在“待安排事件”面板上，则不触发日历缩放，允许面板内部滚动
+        if (target && target.closest('.st-unscheduled-panel')) {
+            return;
+        }
         // 判断是否按住 Ctrl 键
         if (!e.ctrlKey) {
             return;
@@ -188,6 +209,44 @@ export async function run(
             minute: '2-digit',
             hour12: false
         },
+        droppable: true,
+        drop: async (info) => {
+            const draggedEl = info.draggedEl as HTMLElement | null;
+            if (!draggedEl) {
+                return;
+            }
+            const { blockId, itemId } = draggedEl.dataset;
+            if (!blockId) {
+                return;
+            }
+            try {
+                const targetEvent = myF.findUnscheduledEvent(blockId, itemId);
+                if (!targetEvent) {
+                    showMessage('未找到对应事件，请刷新后重试', 4000, 'error');
+                    return;
+                }
+                const scheduled = await myF.scheduleUnscheduledEvent(targetEvent, info.dateStr, info.allDay);
+                if (!scheduled) {
+                    return;
+                }
+                showMessage('已安排事件', 2000, 'info');
+                if (draggedEl.isConnected) {
+                    draggedEl.remove();
+                }
+                updatePlanButtonLabel();
+                refreshKanban();
+                setTimeout(() => calendar.refetchEvents(), 200);
+                moduleInstances['M_calendar']?.scheduleCalendarUpdate?.(1500);
+            } catch (error) {
+                console.error('安排事件失败:', error);
+                showMessage('安排事件失败，请稍后再试', 4000, 'error');
+            }
+        },
+        eventReceive: function (info) {
+            if (info.event.extendedProps?.isUnscheduled) {
+                info.event.remove();
+            }
+        },
 
         // selectable: true,
         // eventDurationEditable: true,
@@ -246,7 +305,7 @@ export async function run(
                 }
             }
         },
-    select: function (_info) {//TODO: 选择处理
+        select: function (_info) {//TODO: 选择处理
             // console.log('select', info);
         },
         // 日期点击处理
@@ -387,7 +446,7 @@ export async function run(
 
         },
 
-    eventResizeStart: function (_info) {
+        eventResizeStart: function (_info) {
             // 创建半透明的时间指示器跟随鼠标
             const timeGhost = document.createElement('div');
             timeGhost.id = 'fc-time-ghost';
@@ -519,6 +578,18 @@ export async function run(
                         lastSavedLifelogSlotDuration
                     );
                 },
+            },
+            planButton: {
+                text: '安排',
+                click: () => {
+                    const pending = myF.getUnscheduledEvents();
+                    if (!pending || pending.length === 0) {
+                        showMessage('当前没有待安排的事件', 3000, 'info');
+                        unscheduled.destroy();
+                        return;
+                    }
+                    unscheduled.toggle();
+                }
             },
             // 添加 Lifelog 自定义按钮
             lifelogToggle: {
@@ -664,7 +735,7 @@ export async function run(
                 /////////////////////Lifelog////////////////////////
                 try {
                     const showLifelogEvents = filterViewId.includes('lifelog');
-                    if (showLifelogEvents && moduleInstances['M_lifelog']?.enabled) {
+                    if (showLifelogEvents) {
                         const lifelogEvents = await LifelogView.getLifelogEvents(info.start, info.end);
                         console.log('是否显示 Lifelog 事件:', showLifelogEvents);
                         console.log('当前过滤视图:', filterViewId);
@@ -732,8 +803,68 @@ export async function run(
                 const events = await myF.convertToFullCalendarEvents(viewValue, viewValue_zq);
                 // console.log('Fetched calendar events:', events);
                 allEvents = allEvents.concat(events);
+
+                // --- 动态调整 slotMinTime 的逻辑 ---
+                try {
+                    // 仅在 timeGrid 类型的视图中应用
+                    const currentViewType = (calendar && calendar.view && calendar.view.type) ? calendar.view.type : '';
+                    if (currentViewType && currentViewType.indexOf('timeGrid') !== -1) {
+                        // 获取用户配置的下限（作为默认下限）
+                        const userConfiguredMin = validateTimeFormat(settingdata['cal-slot-min-time'], '00:00:00');
+
+                        const toMinutes = (t: string) => {
+                            const parts = String(t).split(':').map(Number);
+                            return (parts[0] || 0) * 60 + (parts[1] || 0);
+                        };
+
+                        const currentSlotMin = calendar.getOption('slotMinTime') || userConfiguredMin;
+                        const currentSlotMinMinutes = toMinutes(String(currentSlotMin));
+
+                        // 统计当前视图范围内（info.start ~ info.end）事件的最早开始时间（分钟）
+                        let earliestMinutes = Infinity;
+                        const viewStart = info.start instanceof Date ? info.start.getTime() : new Date(info.start).getTime();
+                        const viewEnd = info.end instanceof Date ? info.end.getTime() : new Date(info.end).getTime();
+
+                        for (const ev of allEvents) {
+                            try {
+                                if (!ev || ev.allDay) continue;
+                                const s = ev.start ? new Date(ev.start).getTime() : null;
+                                if (!s) continue;
+                                if (s < viewStart || s >= viewEnd) continue; // 不在当前视图范围内
+                                const d = new Date(ev.start);
+                                const mins = d.getHours() * 60 + d.getMinutes();
+                                if (mins < earliestMinutes) earliestMinutes = mins;
+                            } catch (e) { /* 忽略单条事件解析错误 */ }
+                        }
+
+                        if (Number.isFinite(earliestMinutes) && earliestMinutes < currentSlotMinMinutes) {
+                            // 按 30 分钟取整向下扩展显示范围，避免过于精细
+                            const newMinRounded = Math.max(0, Math.floor(earliestMinutes / 30) * 30);
+                            const hh = String(Math.floor(newMinRounded / 60)).padStart(2, '0');
+                            const mm = String(newMinRounded % 60).padStart(2, '0');
+                            const newSlotMin = `${hh}:${mm}:00`;
+                            // 不要无限制覆盖用户配置 — 记录为临时调整
+                            calendar.setOption('slotMinTime', newSlotMin);
+                            // 可选：将滚动位置设为新的最早时间，便于用户看到早期事件
+                            try {
+                                const scrollTime = `${hh}:${mm}:00`;
+                                calendar.setOption('scrollTime', scrollTime);
+                            } catch (e) { /* 非致命 */ }
+                        } else {
+                            // 若没有需要扩展的事件，确保 slotMinTime 保持为用户配置（避免被之前调整永久覆盖）
+                            if (currentSlotMin !== userConfiguredMin) {
+                                // 仅在当前 calendar 实际选项被改动并且与用户设置不一致时复原
+                                calendar.setOption('slotMinTime', userConfiguredMin);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('动态调整 slotMinTime 失败:', e);
+                }
+
                 // 5. 回调成功
                 successCallback(allEvents);
+                updatePlanButtonLabel();
             } catch (error) {
                 showMessage('请重新打开日历视图', -1, 'error');
                 console.error('Error fetching calendar events:', error);
@@ -744,6 +875,20 @@ export async function run(
 
         eventDidMount: async function (info) {
             if (!info || !info.event) return;
+            // 为事件元素本身添加块引用属性，便于外部识别/交互（可配置）
+            // 周期事件不添加该属性
+            if (settingdata["cal-event-dom-blockref"]) {
+                try {
+                    const isRecurring = !!info.event?.extendedProps?.isRecurring;
+                    if (!isRecurring) {
+                        const blockRefId = info.event?.extendedProps?.blockId;
+                        if (blockRefId) {
+                            info.el.setAttribute('data-type', 'block-ref');
+                            info.el.setAttribute('data-id', blockRefId);
+                        }
+                    }
+                } catch (e) { console.warn('设置事件元素块引用属性失败:', e); }
+            }
             // 添加右键菜单事件监听
             if (settingdata["cal-show-right-click"]) {
                 info.el.addEventListener('contextmenu', async (e: MouseEvent) => {
@@ -791,21 +936,51 @@ export async function run(
             const source = info.event.extendedProps.source;
             let colorConfig;
 
+            // 1) lifelog 事件继续使用既有配色
             if (source === 'lifelog') {
                 const type = info.event.extendedProps.logType || '固定';
                 colorConfig = lifelogColors[type] || lifelogColors['固定'];
             } else {
-                const priority = info.event.extendedProps.priority || '无';
-                colorConfig = getCategoryColor(priority);
-                info.el.style.borderLeft = `2px solid ${colorConfig.border}`;
+                // 2) 如果启用了“按标签上色”并且事件包含标签，则优先使用标签颜色
+                const enableTagColor = settingdata["cal-color-by-tag"];
+                const tags: string[] = Array.isArray(info.event.extendedProps.tags) ? info.event.extendedProps.tags : [];
+                let tagColorBg: string | null = null;
+
+                if (enableTagColor && tags.length > 0) {
+                    // 解析映射
+                    const mapStr = (settingdata["cal-tag-color-map"] || "") as string;
+                    const tagColorMap = parseTagColorMap(mapStr);
+
+                    // 取第一个标签做主色
+                    const mainTag = String(tags[0]);
+                    if (tagColorMap[mainTag]) {
+                        tagColorBg = tagColorMap[mainTag];
+                    } else {
+                        // 未在映射中，使用稳定哈希生成颜色
+                        const hash = hashString(mainTag);
+                        const [bg] = getColors(Math.abs(hash));
+                        tagColorBg = bg;
+                    }
+                }
+
+                if (tagColorBg) {
+                    const text = guessTextColor(tagColorBg);
+                    colorConfig = { background: tagColorBg, text } as any;
+                } else {
+                    // 3) 默认：沿用优先级配色
+                    const priority = info.event.extendedProps.priority || '无';
+                    colorConfig = getCategoryColor(priority);
+                }
             }
             // 应用颜色
-            info.el.style.backgroundColor = colorConfig.background;
+            if (colorConfig?.background) {
+                info.el.style.backgroundColor = colorConfig.background;
+            }
             // Also apply text color to child elements
             const timeEl = info.el.querySelector('.fc-event-time');
             const titleEl = info.el.querySelector('.fc-event-title');
-            if (timeEl) (timeEl as HTMLElement).style.color = colorConfig.text;
-            if (titleEl) (titleEl as HTMLElement).style.color = colorConfig.text;
+            if (timeEl && colorConfig?.text) (timeEl as HTMLElement).style.color = colorConfig.text;
+            if (titleEl && colorConfig?.text) (titleEl as HTMLElement).style.color = colorConfig.text;
 
             if (info.event.extendedProps.isRecurring && info.event.extendedProps.source !== 'qqcalendar') {
                 const isCompleted = isEventCompleted(info.event);
@@ -889,7 +1064,7 @@ export async function run(
             const statusText = statusValForTip === '归档'
                 ? '归档'
                 : (isCompleted ? '完成' : (statusValForTip || '未设置'));
-            tippy(info.el, {
+            if (settingdata["cal-event-tooltip"]) tippy(info.el, {
                 content: `
                     <div class="event-tooltip">
                         <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -905,6 +1080,8 @@ export async function run(
                             <p><span class="event-tooltip__label">结束:</span> ${info.event.end?.toLocaleString() || "无"}</p>
                             <!-- <p><span class="event-tooltip__label">状态:</span> ${statusText}</p> -->
                             <!-- <p><span class="event-tooltip__label">优先级:</span> ${info.event.extendedProps.priority || "未设置"}</p> -->
+                            ${Array.isArray(info.event.extendedProps.tags) && info.event.extendedProps.tags.length ?
+                        `<p><span class="event-tooltip__label">标签:</span> ${info.event.extendedProps.tags.join(', ')}</p>` : ''}
                             ${info.event.extendedProps.project?.contents?.length || info.event.extendedProps.project?.content ? `<p><span class="event-tooltip__label">项目:</span> ${info.event.extendedProps.project?.contents?.map(item => `<span data-type="block-ref" data-id="${item.block?.id || ''}">${(item.block?.content || "").substring(0, 20)}${item.block?.content?.length > 20 ? '...' : ''}</span>`).join(', ') || info.event.extendedProps.project?.content && `<span data-type="block-ref" data-id="${info.event.extendedProps.project?.id || ''}">${(info.event.extendedProps.project?.content || "").substring(0, 20)}${info.event.extendedProps.project?.content?.length > 20 ? '...' : ''}</span>`}</p>` : ''}
                             ${info.event.extendedProps.references?.length ? `<p><span class="event-tooltip__label">引用:</span> ${info.event.extendedProps.references.map(ref => `<span data-type="block-ref" data-id="${ref.id}">${ref.content.substring(0, 20)}${ref.content.length > 20 ? '...' : ''}</span>`).join(', ')}</p>` : ''}
                             ${info.event.extendedProps.description ? `<p><span class="event-tooltip__label">描述:</span> ${info.event.extendedProps.description.substring(0, 50)}${info.event.extendedProps.description.length > 50 ? '...' : ''}</p>` : ''}
@@ -926,11 +1103,106 @@ export async function run(
     console.log("thisCalendars", thisCalendars);
     OUTcalendar = calendar;
     calendar.render();
+    updatePlanButtonLabel();
+    setupCalendarAutoHeight(calendarEl, calendar);
     return calendar;
 }
 
 
 
+
+// Keep the calendar height aligned with the remaining viewport real estate.
+function setupCalendarAutoHeight(calendarEl: HTMLElement, calendar: Calendar) {
+    if (typeof window === 'undefined' || !calendarEl) {
+        return;
+    }
+
+    const updateHeight = () => {
+        if (!calendarEl.isConnected) {
+            return;
+        }
+        const newHeight = computeCalendarHeight(calendarEl);
+        if (!Number.isFinite(newHeight) || newHeight <= 0) {
+            return;
+        }
+        const nextHeightValue = `${newHeight}px`;
+        if (calendarEl.style.height !== nextHeightValue) {
+            calendarEl.style.height = nextHeightValue;
+        }
+        const currentHeight = calendar.getOption('height');
+        if (typeof currentHeight !== 'number' || Math.abs(currentHeight - newHeight) > 1) {
+            calendar.setOption('height', newHeight);
+        }
+        calendar.updateSize();
+    };
+
+    const rafUpdate = () => window.requestAnimationFrame(updateHeight);
+
+    const previousHandler = calendarResizeHandlers.get(calendarEl);
+    if (previousHandler) {
+        window.removeEventListener('resize', previousHandler);
+    }
+
+    window.addEventListener('resize', rafUpdate);
+    calendarResizeHandlers.set(calendarEl, rafUpdate);
+
+    if (typeof ResizeObserver !== 'undefined') {
+        const previousObserver = calendarResizeObservers.get(calendarEl);
+        previousObserver?.disconnect();
+
+        const observer = new ResizeObserver(() => rafUpdate());
+        if (document.body) {
+            observer.observe(document.body);
+        }
+        if (calendarEl.parentElement) {
+            observer.observe(calendarEl.parentElement);
+        }
+        calendarResizeObservers.set(calendarEl, observer);
+    }
+
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) {
+            return;
+        }
+        cleaned = true;
+        window.removeEventListener('resize', rafUpdate);
+        const observer = calendarResizeObservers.get(calendarEl);
+        observer?.disconnect();
+        calendarResizeObservers.delete(calendarEl);
+        calendarResizeHandlers.delete(calendarEl);
+    };
+
+    const originalDestroy = calendar.destroy.bind(calendar);
+    calendar.destroy = () => {
+        cleanup();
+        originalDestroy();
+    };
+
+    calendar.on?.('datesSet', rafUpdate);
+
+    rafUpdate();
+}
+
+function computeCalendarHeight(calendarEl: HTMLElement): number {
+    if (typeof window === 'undefined') {
+        return MIN_CALENDAR_HEIGHT;
+    }
+
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    if (!viewportHeight) {
+        return MIN_CALENDAR_HEIGHT;
+    }
+
+    const rect = calendarEl.getBoundingClientRect();
+    const topOffset = Math.max(rect.top, 0);
+    const style = window.getComputedStyle(calendarEl);
+    const marginBottom = parseFloat(style.marginBottom || '0');
+    const paddingBottom = parseFloat(style.paddingBottom || '0');
+    const availableHeight = viewportHeight - topOffset - marginBottom - paddingBottom - 8;
+
+    return Math.max(Math.round(availableHeight), MIN_CALENDAR_HEIGHT);
+}
 
 function displayStatusDropZone(calendarEl: HTMLElement, info) {
     let statusDropZone = document.getElementById('status-drop-zone');
@@ -1077,6 +1349,54 @@ var colourIsLight = function (r: number, g: number, b: number) { // Copied from 
     // human eye favors green color...
     var a = 1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     return (a < 0.5);
+}
+
+// ====== 标签颜色相关辅助函数 ======
+function hashString(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+}
+
+function parseTagColorMap(input: string): Record<string, string> {
+    const map: Record<string, string> = {};
+    if (!input || typeof input !== 'string') return map;
+    const lines = input.split(/\r?\n/);
+    for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.startsWith('#')) continue; // 跳过空行与注释
+        const m = t.split(/[:=]/);
+        if (m.length >= 2) {
+            const key = m[0].trim();
+            const value = m.slice(1).join('=')  // 允许颜色里包含冒号
+                .trim();
+            if (key && value) {
+                map[key] = value;
+            }
+        }
+    }
+    return map;
+}
+
+function guessTextColor(bgColor: string): string {
+    // 借助 DOM 将任意 CSS 颜色解析为 rgb()
+    const el = document.createElement('div');
+    el.style.color = bgColor;
+    document.body.appendChild(el);
+    const cs = getComputedStyle(el).color; // 形如 "rgb(r, g, b)"
+    document.body.removeChild(el);
+    const m = cs.match(/rgb\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)/i);
+    if (m) {
+        const r = parseInt(m[1], 10);
+        const g = parseInt(m[2], 10);
+        const b = parseInt(m[3], 10);
+        return colourIsLight(r, g, b) ? 'black' : 'white';
+    }
+    // 兜底
+    return 'var(--b3-theme-on-background)';
 }
 
 // 添加一个独立的辅助函数来检查事件完成状态

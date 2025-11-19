@@ -11,6 +11,8 @@
     import TldrawBackupManager from '@/handwriting/tldraw/tldraw-backup-manager.svelte';
     import TldrawReferenceManager from '@/handwriting/tldraw/tldraw-reference-manager.svelte';
     import Form from './Form';
+    import HeadimgMappingEditor from '@/settings/components/HeadimgMappingEditor.svelte';
+    import NotebookBlacklistEditor from '@/settings/components/NotebookBlacklistEditor.svelte';
 
     export let group: string;
     export let settingItems: ISettingItem[];
@@ -50,7 +52,7 @@
                 on:changed={onChanged}
             />
         </Form.Wrap>
-        {#if item.type === "custom" && item.component === "TldrawBackupManager"}
+    {#if item.type === "custom" && item.component === "TldrawBackupManager"}
         <div class="b3-label">
             <div class="fn__flex-1 fn__flex-column">
                 <TldrawBackupManager />
@@ -64,6 +66,22 @@
             </div>
         </div>
     {/if}
+        {#if item.type === "custom" && item.component === "HeadimgMappingEditor"}
+        <div class="b3-label">
+            <div class="fn__flex-1 fn__flex-column">
+                <HeadimgMappingEditor group={group} key={item.key} value={item.value}
+                  on:changed={(e)=>dispatch('changed', { group, key: item.key, value: e.detail.value })} />
+            </div>
+        </div>
+        {/if}
+        {#if item.type === "custom" && item.component === "NotebookBlacklistEditor"}
+        <div class="b3-label">
+            <div class="fn__flex-1 fn__flex-column">
+                <NotebookBlacklistEditor group={group} key={item.key} value={item.value}
+                  on:changed={(e)=>dispatch('changed', { group, key: item.key, value: e.detail.value })} />
+            </div>
+        </div>
+        {/if}
     {/each}
     
 </div>

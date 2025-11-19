@@ -59,14 +59,54 @@ export class VisualSqlBuilder {
   createdSinceDays(days?: number) {
     if (!days || days <= 0) return this;
     this.addFilter({
-      rawSql: `created > strftime('%Y%m%d%H%M%S', datetime('now', '-${days} day'))`
+      rawSql: `created > strftime('%Y%m%d%H%M%S', 'now', 'localtime', '-${days} day')`
     });
     return this;
   }
   updatedSinceDays(days?: number) {
     if (!days || days <= 0) return this;
     this.addFilter({
-      rawSql: `updated > strftime('%Y%m%d%H%M%S', datetime('now', '-${days} day'))`
+      rawSql: `updated > strftime('%Y%m%d%H%M%S', 'now', 'localtime', '-${days} day')`
+    });
+    return this;
+  }
+
+  /**
+   * 通用：近 N 时间（分钟/小时/天）
+   */
+  createdSince(amount?: number, unit: 'minute' | 'hour' | 'day' = 'day') {
+    const n = Math.floor(Number(amount || 0));
+    if (!n || n <= 0) return this;
+    const u = unit === 'minute' ? 'minute' : unit === 'hour' ? 'hour' : 'day';
+    this.addFilter({ rawSql: `created > strftime('%Y%m%d%H%M%S', 'now', 'localtime', '-${n} ${u}')` });
+    return this;
+  }
+  updatedSince(amount?: number, unit: 'minute' | 'hour' | 'day' = 'day') {
+    const n = Math.floor(Number(amount || 0));
+    if (!n || n <= 0) return this;
+    const u = unit === 'minute' ? 'minute' : unit === 'hour' ? 'hour' : 'day';
+    this.addFilter({ rawSql: `updated > strftime('%Y%m%d%H%M%S', 'now', 'localtime', '-${n} ${u}')` });
+    return this;
+  }
+
+  /**
+   * 今日创建（本地时区）：
+   * created >= 今天 00:00:00 AND created < 明天 00:00:00
+   */
+  createdToday() {
+    this.addFilter({
+      rawSql: `created >= strftime('%Y%m%d%H%M%S','now','localtime','start of day') AND created < strftime('%Y%m%d%H%M%S','now','localtime','start of day','+1 day')`
+    });
+    return this;
+  }
+
+  /**
+   * 今日更新（本地时区）：
+   * updated >= 今天 00:00:00 AND updated < 明天 00:00:00
+   */
+  updatedToday() {
+    this.addFilter({
+      rawSql: `updated >= strftime('%Y%m%d%H%M%S','now','localtime','start of day') AND updated < strftime('%Y%m%d%H%M%S','now','localtime','start of day','+1 day')`
     });
     return this;
   }

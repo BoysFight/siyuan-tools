@@ -8,6 +8,7 @@ import { formatDateToISO, formatLocalDate } from "./siyuan_api";
 import { createDidaDock, DidaLinkInterceptor } from "@/api/dockdida_pro";
 import * as ic from "@/icon"
 import { extractNewAvId } from "@/api/api3";
+import { interceptFetch, type InterceptorHandle, beginTaggedRequests, endTaggedRequests } from "@/api/network-interceptor";
 export class Dida365Service {
     private apiClient: Dida365ApiClient;
     private plugin: steveTools;
@@ -18,6 +19,7 @@ export class Dida365Service {
     private isSyncing = false; // 新增同步锁
     private creatingDidaIds: Set<string> = new Set();
     private syncDebounceTimer: NodeJS.Timeout | null = null; // 防抖计时器
+    private netInterceptorHandle: InterceptorHandle | null = null; // 独立拦截句柄
 
     constructor(token: string, plugin: steveTools) {
         this.plugin = plugin;
@@ -77,6 +79,7 @@ export class Dida365Service {
         await this.init_av();
         await this.getAllTasks(); // 初始化时加载滴答任务缓存
         this.setupSiyuanUpdateListener(); // 2025/7/5新增：设置思源更新监听器
+        this.setupNetworkInterceptor();    // 监听前端发起到 /api/av/* 的请求
     }
     /**
      * 获取数据库视图数据的封装方法
@@ -115,7 +118,6 @@ export class Dida365Service {
             showMessage("初始化数据库视图失败: " + (error instanceof Error ? error.message : String(error)));
         }
     }
-    private didaDock: any = null;
     private linkInterceptor: DidaLinkInterceptor;
     private createDock() {
         this.linkInterceptor = new DidaLinkInterceptor(showMessage);
@@ -127,7 +129,6 @@ export class Dida365Service {
             size: { width: 350, height: 0 },
             showMessage,
             onDockCreated: (dock) => {
-                this.didaDock = dock;
                 // 设置链接拦截器
                 this.linkInterceptor.setDock(dock);
                 console.log("滴答清单dock创建成功", dock);
@@ -172,7 +173,7 @@ export class Dida365Service {
     }
 
     async syncTasksToSiyuan(): Promise<boolean> {
-        // this.isSyncing = true; // 开始同步，锁定
+    this.isSyncing = true; // 开始同步，锁定，WS 监听将跳过
         showStatusMessage("正在同步滴答清单任务，请稍候...", 10000, "dida-sync");
         try {
             // 获取滴答清单的所有任务
@@ -359,6 +360,37 @@ export class Dida365Service {
     }
 
     /**
+     * 解析设置中的默认提醒，支持：
+     * - 字符串：以换行或逗号分隔；
+     * - 数组：直接使用；
+     * - 自动补全缺失的前缀（若仅提供 -PT5M 等会补上 TRIGGER:）。
+     */
+    private parseDidaReminders(input: unknown): string[] {
+        if (!input) return [];
+        let parts: string[] = [];
+        if (Array.isArray(input)) {
+            parts = input as string[];
+        } else if (typeof input === 'string') {
+            parts = input
+                .split(/\r?\n|,/) // 按行或逗号
+                .map(s => s.trim())
+                .filter(Boolean);
+        } else {
+            return [];
+        }
+        // 规范化并去重
+        const norm = (s: string) => s.startsWith('TRIGGER:') ? s : (s.startsWith('-PT') ? `TRIGGER:${s}` : s);
+        const valid = parts
+            .map(norm)
+            .filter(s => /^TRIGGER:\s*-?P(T\d+[HMS]|T?\d+[HMS].*)?/i.test(s) || /^TRIGGER:-?PT\d+[HMS](;.*)?$/i.test(s) || s.startsWith('TRIGGER:')); // 宽松校验，保留 TRIGGER 开头
+        // 去重保持顺序
+        const seen = new Set<string>();
+        const result: string[] = [];
+        for (const r of valid) { if (!seen.has(r)) { seen.add(r); result.push(r); } }
+        return result;
+    }
+
+    /**
      * 构建任务数据
      */
     private buildTaskData(didaTask: Task, existingTask?: any) {
@@ -520,13 +552,17 @@ ${taskData.描述?.content || "描述：暂无"}
             );
 
             // 添加到数据库
-            await addBlockToDatabase_pro(blockId, this.avId, itemID);
+            await this.withDidaTagged(async () => {
+                await addBlockToDatabase_pro(blockId, this.avId!, itemID);
+            });
 
             // 获取 viewValue 用于获取 keyID
             const viewValue = await this.getAvViewData("创建思源任务");
 
             // 更新各个字段
-            await this.updateTaskFields(blockId, taskData, viewValue, itemID);
+            await this.withDidaTagged(async () => {
+                await this.updateTaskFields(blockId, taskData, viewValue, itemID);
+            });
 
             // 同步更新滴答清单任务，为其添加 S 链接
             if (taskData.didaID?.content) {
@@ -579,7 +615,9 @@ ${taskData.描述?.content || "描述：暂无"}
             const viewValue = await this.getAvViewData("更新思源任务");
 
             // 更新各个字段
-            await this.updateTaskFields(blockId, newTaskData, viewValue, itemID, existingTask);
+            await this.withDidaTagged(async () => {
+                await this.updateTaskFields(blockId, newTaskData, viewValue, itemID, existingTask);
+            });
 
             // 更新块的自定义属性（状态）
             const statusCustomAttr = newTaskData.状态?.content === "完成" ? "done" : "todo";
@@ -690,8 +728,10 @@ ${taskData.描述?.content || "描述：暂无"}
                 );
             }
 
-            // 等待所有数据库状态更新完成
-            await Promise.all(updatePromises);
+            // 等待所有数据库状态更新完成（加 dida 标签，监听可识别并跳过）
+            await this.withDidaTagged(async () => {
+                await Promise.all(updatePromises);
+            });
 
             // 等待所有块属性更新完成
             await Promise.all(blockAttrPromises);
@@ -878,6 +918,8 @@ ${taskData.描述?.content || "描述：暂无"}
      * 创建日记（如果需要）
      */
     private async createDailynote(parentId: string, date: Date): Promise<string> {
+        // 标记参数已读取，避免 TS noUnusedLocals（后续若扩展日期逻辑可直接使用）
+        void date;
         // 这里需要根据您的日记创建逻辑来实现
         // 暂时使用简单的创建方式
         return (await createDailyNote(window.siyuan.ws.app.appId, parentId)).id;
@@ -892,6 +934,88 @@ ${taskData.描述?.content || "描述：暂无"}
             }
         });
     }
+
+    /**
+     * 监听前端发送的 /api/av/* 请求，补充 WebSocket 事务监听，做到“本地立即响应 + 服务器广播兜底”。
+     * - 成功响应后，只针对我们关心的接口触发本地强制处理：setAttributeViewBlockAttr / batchSetAttributeViewBlockAttrs / addAttributeViewBlocks
+     */
+    private setupNetworkInterceptor(): void {
+    if (this.netInterceptorHandle) return; // 避免重复安装
+
+    this.netInterceptorHandle = interceptFetch({
+            filter: (url, method) => method === 'POST' && url.includes('/api/av/'),
+            onResponse: async (ctx) => {
+                try {
+                    // 若本次请求带有 dida 标签（由本模块打标），则跳过，避免自身触发
+                    const h = (ctx.headers || {}) as Record<string, string>;
+                    const tag = h['x-st-tag-dida'];
+                    const tags = h['x-st-tags'];
+                    if (tag === '1' || (typeof tags === 'string' && tags.split(',').includes('dida'))) {
+                        return;
+                    }
+                    // 插件自身正在同步时，忽略这些回调，避免双触发
+                    if (this.isSyncing) return;
+                    if (!ctx.resOk || ctx.resStatus !== 200) return;
+                    const url = ctx.url;
+                    const body = (ctx.reqBody || {}) as any;
+
+                    // 仅关注我们关心的几个接口
+                    // 1) 单元格更新：/api/av/setAttributeViewBlockAttr
+                    if (url.includes('/api/av/setAttributeViewBlockAttr') && body?.avID && body?.itemID) {
+                        const avID: string = body.avID;
+                        const itemID: string = body.itemID;
+                        if (this.avId && avID === this.avId) {
+                            const map = await getAttributeViewBoundBlockIDsByItemIDs(avID, [itemID]);
+                            const blockId = map[itemID];
+                            if (blockId) {
+                                // 直接强制触发一次本地处理，减少等待 WS 通知的延迟
+                                this.handleSiyuanUpdate('force', blockId, itemID);
+                            }
+                        }
+                        return;
+                    }
+
+                    // 2) 批量单元格更新：/api/av/batchSetAttributeViewBlockAttrs
+                    if (url.includes('/api/av/batchSetAttributeViewBlockAttrs') && body?.avID && Array.isArray(body?.values)) {
+                        const avID: string = body.avID;
+                        const values: Array<{ itemID: string } & Record<string, any>> = body.values;
+                        if (this.avId && avID === this.avId && values.length > 0) {
+                            const itemIDs = Array.from(new Set(values.map(v => v.itemID).filter(Boolean)));
+                            if (itemIDs.length > 0) {
+                                const map = await getAttributeViewBoundBlockIDsByItemIDs(avID, itemIDs);
+                                // 只触发一次或按需多次，这里选择对每个 itemID 触发一次，保证精准
+                                for (const itemID of itemIDs) {
+                                    const blockId = map[itemID];
+                                    if (blockId) {
+                                        this.handleSiyuanUpdate('force', blockId, itemID);
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+
+                    // 3) 添加块到数据库：/api/av/addAttributeViewBlocks
+                    if (url.includes('/api/av/addAttributeViewBlocks') && body?.avID && Array.isArray(body?.srcs)) {
+                        const avID: string = body.avID;
+                        const srcs: Array<{ id: string; itemID: string; isDetached?: boolean } & Record<string, any>> = body.srcs;
+                        if (this.avId && avID === this.avId && srcs.length > 0) {
+                            for (const s of srcs) {
+                                if (s.itemID && s.id && !s.isDetached) {
+                                    this.handleSiyuanUpdate('force', s.id, s.itemID);
+                                }
+                            }
+                        }
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('网络请求拦截处理失败:', err);
+                }
+            },
+        });
+    }
+
+    //（留空占位，无辅助方法）
 
     private async handleSiyuanUpdate_dalay(e) {
         setTimeout(() => {
@@ -983,15 +1107,34 @@ ${taskData.描述?.content || "描述：暂无"}
                     const priorityMap: { [key: string]: 0 | 1 | 3 | 5 } = { "无": 0, "低": 1, "中": 3, "高": 5 };
                     updatePayload.priority = priorityMap[siyuanTask.优先级.content];
                 }
+                // 时间与提醒：当时间发生变化时，附带默认提醒
+                const newStartISO = siyuanTask.开始时间?.start ? formatDateToISO(siyuanTask.开始时间.start) : undefined;
+                const newDueISO = siyuanTask.开始时间?.end ? formatDateToISO(siyuanTask.开始时间.end) : undefined; // TODO：滴答 API 无法设置时间段，仅记录结束为 dueDate
+                const oldStartISO = cachedTask.startDate;
+                const oldDueISO = cachedTask.dueDate;
+                const timeChanged = newStartISO !== oldStartISO || newDueISO !== oldDueISO;
+
                 if (siyuanTask.开始时间) {
-                    updatePayload.startDate = siyuanTask.开始时间.start ? formatDateToISO(siyuanTask.开始时间.start) : undefined;
-                    updatePayload.dueDate = siyuanTask.开始时间.end ? formatDateToISO(siyuanTask.开始时间.end) : undefined; //TODO：滴答api无法设置时间段
+                    updatePayload.startDate = newStartISO;
+                    updatePayload.dueDate = newDueISO;
                     updatePayload.isAllDay = false;
                     updatePayload.timeZone = "Asia/Shanghai";
                 } else {
                     updatePayload.startDate = undefined;
                     updatePayload.dueDate = undefined;
                     updatePayload.timeZone = "Asia/Shanghai";
+                }
+
+                // 若时间变更且现在存在时间，则注入默认提醒（不去清空已有提醒，避免覆盖用户自定义）
+                if (timeChanged && (newStartISO || newDueISO)) {
+                    try {
+                        const defaults = this.parseDidaReminders((settingdata as any)["cal-dida-default-reminders"]);
+                        if (defaults.length) {
+                            updatePayload.reminders = defaults;
+                        }
+                    } catch {
+                        // 忽略解析失败，保持原样
+                    }
                 }
 
                 // 处理状态和标签
@@ -1059,6 +1202,16 @@ ${taskData.描述?.content || "描述：暂无"}
                         priority: siyuanTask.优先级?.content ? { "无": 0, "低": 1, "中": 3, "高": 5 }[siyuanTask.优先级.content] : 0,
                         startDate: siyuanTask.开始时间?.start ? formatDateToISO(siyuanTask.开始时间.start) : undefined,
                         dueDate: siyuanTask.开始时间?.end ? formatDateToISO(siyuanTask.开始时间.end) : undefined,
+                        // 默认提醒：从设置读取并注入
+                        reminders: (() => {
+                            try {
+                                const raw = (settingdata as any)["cal-dida-default-reminders"];
+                                const arr = this.parseDidaReminders(raw);
+                                return arr.length ? arr : undefined;
+                            } catch {
+                                return undefined;
+                            }
+                        })(),
                         // 标签处理优化：合并标签和状态标签
                         tags: [
                             ...(siyuanTask.标签?.content || []).map((item: any) => item),
@@ -1098,7 +1251,10 @@ ${taskData.描述?.content || "描述：暂无"}
 
                         // 等待所有更新完成
                         if (updatePromises.length > 0) {
-                            await Promise.all(updatePromises);
+                            // 仅在回写 didaID/链接期间为请求打上 dida 标签，让拦截器识别并跳过
+                            await this.withDidaTagged(async () => {
+                                await Promise.all(updatePromises);
+                            });
                             // 更新缓存
                             this.taskCache.set(newDidaTask.id, newDidaTask);
                             console.log(`新思源任务 [${blockId}] 已同步到滴答，ID为 [${newDidaTask.id}]，链接已回写`);
@@ -1118,6 +1274,18 @@ ${taskData.描述?.content || "描述：暂无"}
             console.error("从思源同步到滴答失败:", error);
         }
     };
+
+    /**
+     * 在作用域内为所有发出的 fetch 请求打上 dida 标签，供本模块的网络监听识别并跳过。
+     */
+    private async withDidaTagged<T>(fn: () => Promise<T>): Promise<T> {
+        beginTaggedRequests('dida');
+        try {
+            return await fn();
+        } finally {
+            endTaggedRequests('dida');
+        }
+    }
     /**
      * 检测 Dida365 API Token 是否有效。
      * @returns Promise<boolean> 如果 Token 有效，返回 true；否则返回 false。

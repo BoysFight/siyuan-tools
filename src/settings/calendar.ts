@@ -56,6 +56,8 @@ export const calendarDefaults: Record<string, any> = {
     "cal-dida-db-id": "",
     "cal-dida-sync-mode": "auto",
     "cal-dida-sync-interval": 5,
+    // 滴答清单默认提醒（每行一条，如：TRIGGER:-PT5M）
+    "cal-dida-default-reminders": "",
     // 我的滴答清单配置
     "cal-mydida-enable": false,
     "cal-dida-use-official-api": true,
@@ -83,6 +85,14 @@ export const calendarDefaults: Record<string, any> = {
     "cal-slot-max-time": "24:00:00",
     "cal-snap-duration": "00:30:00",
     "cal-event-color": true,
+    // 事件DOM写入块引用属性
+    "cal-event-dom-blockref": true,
+    // 事件提示气泡（tippy）
+    "cal-event-tooltip": true,
+    // 标签上色
+    "cal-color-by-tag": false,
+    // 以每行一条的形式定义：标签=颜色，例如： 工作=#5B8FF9\n学习=rgb(64, 192, 87)
+    "cal-tag-color-map": "",
     "kanban-default-view": "kanban",
     "cal-default-view": "dayGridMonth",
     "quadrant-default-view": "priorityQuadrant",
@@ -118,10 +128,11 @@ export const calendarGroup = (ctx: BuildContext): SettingGroupDefinition => ({
         {
             name: "基础设置",
             items: [
-                { type: "checkbox", title: "启用日程管理", description: "启用日程管理功能后再进行下面的设置", key: "cal-enable", value: ctx.settings["cal-enable"] },
+                { type: "checkbox", title: "启用日程管理", description: "启用日程管理功能后再进行此模块的设置", key: "cal-enable", value: ctx.settings["cal-enable"] },
                 { type: "checkbox", title: "全局日程视图", description: "启用后再左上角加一个日历视图的入口", key: "cal-show-view", value: ctx.settings["cal-show-view"] },
                 { type: "select", title: "日程创建位置", description: "选择日记本", key: "cal-create-pos", value: ctx.settings["cal-create-pos"], options: notebookOptions() },
-                { type: "select", title: "日程数据库选择", description: "选择默认添加事件的数据库", key: "cal-db-id", value: ctx.settings["cal-db-id"], dynamicOptions: calendarDbOptions },
+                { type: "select", title: "日程数据库选择", description: "选择默认添加事件的数据库<br>如何绑定数据库? 点击数据库块标 - 属性 - 命名，填“日程”", key: "cal-db-id", value: ctx.settings["cal-db-id"], dynamicOptions: calendarDbOptions },
+                { type: "hint", title: "周期事件的使用", description: "点击数据库块标 - 属性 - 命名，填“周期”。相关模板请自行下载导入<a href=\"https://ld246.com/article/1760977116942/comment/1761751034348?r=stevehfut#comments\" target=\"_blank\" rel=\"noopener noreferrer\">这里</a>", key: "cal-bind-db-info", value: "" },
                 { type: "number", title: "默认持续时间(单位：小时)", description: "默认事件持续时间", key: "cal-time", value: ctx.settings["cal-time"] },
                 { type: "checkbox", title: "是否按事件时间创建日记", description: "启用后会按事件时间的日记创建日程", key: "cal-create-for-date", value: ctx.settings["cal-create-for-date"] },
             ]
@@ -185,7 +196,7 @@ export const calendarGroup = (ctx: BuildContext): SettingGroupDefinition => ({
                 { type: "select", title: "导入模式", description: "如何放置导入事件", key: "cal-ics-import-mode", value: ctx.settings["cal-ics-import-mode"], options: { "single-document": "导入到当日日记本", "daily-notes": "按事件日期" } },
                 { type: "checkbox", title: "添加到数据库", description: "导入块添加到指定数据库", key: "cal-ics-add-to-database", value: ctx.settings["cal-ics-add-to-database"] },
                 { type: "select", title: "ICS导入数据库", description: "选择要添加的数据库", key: "cal-ics-database-id", value: ctx.settings["cal-ics-database-id"], dynamicOptions: calendarDbOptions },
-                { type: "textarea", title: "ICS导入模板", description: "自定义导入块模板(支持占位符){{title}} - 事件标题 {{startTime}} - 开始时间 {{endTime}} - 结束时间 {{location}} - 地点 {{description}} - 描述 {{status}} - 状态 {{recurrence}} - 重复规则 {{tags}} - 标签", key: "cal-ics-custom-template", value: ctx.settings["cal-ics-custom-template"], direction: "row" },
+                { type: "textarea", title: "ICS导入模板", description: "自定义导入块模板(支持占位符)\n{{title}} - 事件标题\n{{startTime}} - 开始时间 (本地格式)\n{{endTime}} - 结束时间 (本地格式)\n{{startDate}} - 开始日期 (YYYY-MM-DD)\n{{endDate}} - 结束日期 (YYYY-MM-DD)\n{{startDateTime}} - 开始日期时间 (YYYY-MM-DD HH:mm)\n{{endDateTime}} - 结束日期时间 (YYYY-MM-DD HH:mm)\n{{short_startTime}} - 开始时间 (短格式, 如 01:45 或 全天)\n{{short_endTime}} - 结束时间 (短格式, 如 18:00 或 全天)\n{{location}} - 地点\n{{description}} - 描述\n{{status}} - 状态\n{{recurrence}} - 重复规则\n{{tags}} - 标签", key: "cal-ics-custom-template", value: ctx.settings["cal-ics-custom-template"], direction: "row" },
             ]
         },
         {
@@ -197,10 +208,14 @@ export const calendarGroup = (ctx: BuildContext): SettingGroupDefinition => ({
                 { type: "textinput", title: "拖拽时间间隔", description: "拖拽调整最小单位", key: "cal-snap-duration", value: ctx.settings["cal-snap-duration"] },
                 { type: "select", title: "日历周起始日", description: "周首日", key: "cal-week-start", value: ctx.settings["cal-week-start"], options: { monday: "周一", sunday: "周日" } },
                 { type: "checkbox", title: "事件颜色样式切换", description: "启用后使用另一套事件颜色", key: "cal-event-color", value: ctx.settings["cal-event-color"] },
+                { type: "checkbox", title: "事件元素写入块引用属性", description: "为事件DOM添加 data-type=\"block-ref\" 与 data-id 属性", key: "cal-event-dom-blockref", value: ctx.settings["cal-event-dom-blockref"] },
+                { type: "checkbox", title: "启用事件悬浮提示", description: "显示事件详情的悬浮提示气泡（tippy）", key: "cal-event-tooltip", value: ctx.settings["cal-event-tooltip"] },
+                { type: "checkbox", title: "按标签为事件上色", description: "优先使用事件的第一个标签决定颜色（优先级颜色将被覆盖）", key: "cal-color-by-tag", value: ctx.settings["cal-color-by-tag"] },
+                { type: "textarea", title: "标签-颜色映射", description: "每行一条，格式：标签=颜色；支持 #HEX、rgb()、hsl()、颜色名。如：\n工作=#5B8FF9\n学习=rgb(64, 192, 87)", key: "cal-tag-color-map", value: ctx.settings["cal-tag-color-map"], direction: "row" },
                 { type: "select", title: "默认日历视图模式", description: "首次打开默认模式", key: "cal-default-view", value: ctx.settings["cal-default-view"], options: { multiMonthYear: "MultiMonthYear", dayGridMonth: "DayGridMonth", timeGridWeek: "TimeGridWeek", timeGridThreeDays: "TimeGridThreeDays", timeGridDay: "TimeGridDay" } },
                 { type: "select", title: "默认看板视图模式", description: "看板默认模式", key: "kanban-default-view", value: ctx.settings["kanban-default-view"], options: { weekkanban: "WeekKanban", kanban: "Kanban", yearkanban: "YearKanban" } },
                 { type: "select", title: "默认四象限视图模式", description: "四象限默认模式", key: "quadrant-default-view", value: ctx.settings["quadrant-default-view"], options: { weekpriorityQuadrant: "WeekQuadrant", priorityQuadrant: "Quadrant", yearpriorityQuadrant: "YearQuadrant" } },
-                { type: "textarea", title: "视图右侧按钮", description: "逗号分隔的视图按钮列表：\n\nmultiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,\n\nweekkanban,kanban,yearkanban,\n\npriorityQuadrant,yearpriorityQuadrant,weekpriorityQuadrant", key: "cal-toolbar-right", value: ctx.settings["cal-toolbar-right"], direction: "row" },
+                { type: "textarea", title: "视图右侧按钮", description: "逗号分隔的视图按钮列表：\n\nmultiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,\n\nweekkanban,kanban,yearkanban,\n\npriorityQuadrant,yearpriorityQuadrant,weekpriorityQuadrant,planButton", key: "cal-toolbar-right", value: ctx.settings["cal-toolbar-right"], direction: "row" },
                 { type: "number", title: "四象限紧急阈值（天）", description: "<=阈值视为紧急", key: "cal-quadrant-urgent-days", value: ctx.settings["cal-quadrant-urgent-days"] },
             ]
         },
@@ -213,6 +228,94 @@ export const calendarGroup = (ctx: BuildContext): SettingGroupDefinition => ({
                 { type: "textinput", title: "滴答清单同步数据库id", description: "对应数据库 id", key: "cal-dida-db-id", value: ctx.settings["cal-dida-db-id"] },
                 { type: "select", title: "滴答清单同步模式", description: "同步触发模式", key: "cal-dida-sync-mode", value: ctx.settings["cal-dida-sync-mode"], options: { auto: "自动同步", manual: "手动同步", all: "自动+手动" } },
                 { type: "number", title: "自动同步间隔", description: "分钟", key: "cal-dida-sync-interval", value: ctx.settings["cal-dida-sync-interval"] },
+                { type: "textarea", title: "默认提醒", description: "创建滴答任务时默认添加的提醒，每行一条；格式为 TRIGGER:ISO-8601 持续时间，如：\nTRIGGER:-PT0S（立即）\nTRIGGER:-PT5M（提前5分钟）\nTRIGGER:-PT30M（提前30分钟）\n留空则不设置提醒。", key: "cal-dida-default-reminders", value: ctx.settings["cal-dida-default-reminders"], direction: "row" },
+            ]
+        },
+        {
+            name: "我的滴答清单",
+            items: [
+                {
+                    type: "checkbox",
+                    title: "启用滴答清单同步",
+                    description: "启用后开启将思源笔记的任务同步到滴答清单功能",
+                    key: "cal-mydida-enable",
+                    value: ctx.settings["cal-mydida-enable"],
+                },
+                {
+                    type: "textinput",
+                    title: "API访问令牌",
+                    description: "滴答清单的API访问令牌（可选，用于高级功能）",
+                    key: "cal-dida-official-access-token",
+                    value: ctx.settings["cal-dida-official-access-token"],
+                },
+                {
+                    type: "checkbox",
+                    title: "自动同步滴答清单",
+                    description: "同步触发后自动同步滴答清单",
+                    key: "docker-sync-auto-trigger-dida",
+                    value: ctx.settings["docker-sync-auto-trigger-dida"],
+                },
+                {
+                    type: "textinput",
+                    title: "默认任务列表ID",
+                    description: "滴答清单默认任务列表的ID",
+                    key: "cal-dida-default-list-id",
+                    value: ctx.settings["cal-dida-default-list-id"],
+                },
+                {
+                    type: "button",
+                    title: "测试连接",
+                    description: "测试滴答清单连接是否正常",
+                    key: "cal-dida-test",
+                    value: ctx.settings["cal-dida-test"],
+                    button: {
+                        label: "测试",
+                        callback: async () => {
+                            try {
+                                if (!ctx.moduleInstances["M_sync"]) {
+                                    showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
+                                    return;
+                                }
+                                if (!ctx.moduleInstances["M_calendar"]) {
+                                    showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
+                                    return;
+                                }
+                                showMessage("正在测试滴答清单连接，请稍候...");
+                                await ctx.moduleInstances["M_sync"].manualTestDidaProjectTasks();
+                            } catch (error) {
+                                console.error("测试连接失败:", error);
+                                showMessage(`测试连接失败: ${error.message}`, -1, "error");
+                            }
+                        },
+                    },
+                },
+                {
+                    type: "button",
+                    title: "立即同步",
+                    description: "立即执行一次同步操作",
+                    key: "cal-dida-sync-now",
+                    value: ctx.settings["cal-dida-sync-now"],
+                    button: {
+                        label: "同步",
+                        callback: async () => {
+                            try {
+                                if (!ctx.moduleInstances["M_sync"]) {
+                                    showMessage("同步模块未启用，请先在基础设置中启用同步功能", -1, "error");
+                                    return;
+                                }
+                                if (!ctx.moduleInstances["M_calendar"]) {
+                                    showMessage("日历模块未启用，同步功能需要依赖日历模块", -1, "error");
+                                    return;
+                                }
+                                showMessage("正在同步到滴答清单，请稍候...");
+                                await ctx.moduleInstances["M_sync"].manualDidaSync();
+                            } catch (error) {
+                                console.error("同步失败:", error);
+                                showMessage(`同步失败: ${error.message}`, -1, "error");
+                            }
+                        },
+                    },
+                },
             ]
         },
         {

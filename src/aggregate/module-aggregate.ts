@@ -1,32 +1,137 @@
 import steveTools from "@/index";
 import { VisualSqlUI } from "./sql/visual-sql-ui";
-import { VisualEchartsUI } from "./echarts/visual-echarts-ui";
+import { VisualEchartsUI } from "./echarts/ui/visual-echarts-ui";
 import { Dialog, Menu, openTab } from "siyuan";
-import { updateBlock, insertBlock } from "@/api/api";
+import { updateBlock } from "@/api/api";
 import { PluginConfig } from "@/savedata";
+import { aggregatorBlock } from "./aggregator_block";
+import { ContentAggregatorTabUI } from "./ui/content-aggregator-tab";
+
+const APPLY_VISUAL_SQL_PRESET_EVENT = 'siyuan-steve-tools:apply-visual-sql-preset';
 
 // Aggregate 模块
 export class M_Aggregate {
     private plugin: steveTools;
     private _ui?: VisualSqlUI; // 嵌入式 UI 引用（仅生命周期持有）
     private _tabInstances = new Map<string, VisualSqlUI>(); // Tab 实例映射
-
+    private _aggregatorBlockInstance?: aggregatorBlock; // 内容聚合器实例
     constructor(plugin: steveTools) {
         this.plugin = plugin;
     }
 
     async init(_settingdata: any) {
         console.log("Aggregate 模块初始化");
+        if (_settingdata["aggregate-enable-content-aggregator"]) {
+            // Provide PluginConfig for persistent presets storage
+            const confAgg = new PluginConfig(this.plugin.name, 'aggregate-sql');
+            await confAgg.load();
+            await (this._aggregatorBlockInstance = new aggregatorBlock(this.plugin, confAgg)).init(_settingdata);
+
+            // 注册 内容聚合器 为思源选项卡
+            const aggregate = this;
+            this.plugin.addTab({
+                type: "content-aggregator",
+                async init() {
+                    const id = new Date().getTime().toString();
+                    this.element.innerHTML = `<div id=\"content-aggregator-tab-${id}\" style=\"width:100%;height:100%;overflow:auto;\"></div>`;
+                    const container = document.getElementById(`content-aggregator-tab-${id}`)! as HTMLElement;
+                    // 使用新的页签 UI 类（非模态）
+                    ;(this as any)._caUI = new ContentAggregatorTabUI(container, (aggregate as any)._aggregatorBlockInstance);
+                },
+                async destroy() {
+                    // 销毁页签 UI
+                    try { (this as any)._caUI?.destroy?.(); } catch {}
+                },
+            });
+        }
 
         if (_settingdata["aggregate-enable-sql-visualizer"]) {
             const topBarElement = this.plugin.addTopBar({
                 icon: "iconSQL",
-                title: "SQL 可视化生成器",
+                title: "聚合",
                 position: "right",
                 callback: async () => {
                     const rect = topBarElement.getBoundingClientRect();
                     this.addMenu(rect, _settingdata);
                 }
+            });
+
+            // 右键（contextmenu）显示置顶的内容聚合预设快速执行菜单
+            topBarElement.addEventListener('contextmenu', async (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (!this._aggregatorBlockInstance) {
+                    return;
+                }
+                // 获取置顶预设
+                let pinned: Array<{ name: string; preset: any }> = [];
+                try {
+                    pinned = await this._aggregatorBlockInstance.getPinnedPresets();
+                } catch (err) {
+                    console.warn('[M_Aggregate] 获取置顶预设失败', err);
+                }
+
+                const menu = new Menu('topBarAggQuick', () => { });
+                const recentThresholdMin = this._aggregatorBlockInstance.getRecentUpdateThresholdMinutes();
+                const now = Date.now();
+                const fmtRelative = (ts?: number) => {
+                    if (!ts) return '-';
+                    const diffMs = now - ts;
+                    if (diffMs < 0) return '未来?';
+                    const diffMin = diffMs / 60000;
+                    if (diffMin < 1) return '刚刚';
+                    if (diffMin < 60) return Math.floor(diffMin) + ' 分钟前';
+                    const diffHr = diffMin / 60;
+                    if (diffHr < 24) return Math.floor(diffHr) + ' 小时前';
+                    const diffDay = diffHr / 24;
+                    return Math.floor(diffDay) + ' 天前';
+                };
+
+                if (!pinned.length) {
+                    menu.addItem({ icon: 'iconInfo', label: '无置顶预设', click: () => { } });
+                } else {
+                    pinned.forEach(({ name, preset }) => {
+                        const lastTS: number | undefined = preset.lastExecuteTime || preset.updatedAt || undefined;
+                        const rel = fmtRelative(lastTS);
+                        const isRecent = lastTS && (now - lastTS) <= recentThresholdMin * 60000;
+                        const displayLabel = `${name}  · 上次: ${rel}`;
+                        menu.addItem({
+                            icon: isRecent ? 'iconRefresh' : 'iconSQL',
+                            label: displayLabel,
+                            click: async () => {
+                                await this._aggregatorBlockInstance?.runPresetByName(name);
+                            }
+                        });
+                    });
+                }
+
+                menu.addSeparator();
+                menu.addItem({
+                    icon: 'iconDatabase',
+                    label: '打开内容聚合器页签',
+                    click: async () => {
+                        await openTab({
+                            app: (window as any).siyuan.ws.app,
+                            custom: { icon: 'iconDatabase', title: '内容聚合器', id: this.plugin.name + 'content-aggregator', data: { id: null } },
+                            keepCursor: false,
+                        });
+                    }
+                });
+                menu.addItem({
+                    icon: 'iconRefresh',
+                    label: '刷新列表',
+                    click: async () => {
+                        // 重新触发一次 contextmenu 展开
+                        const rect = topBarElement.getBoundingClientRect();
+                        // 延迟以避免当前菜单仍在关闭动画期间
+                        setTimeout(() => {
+                            const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.right, clientY: rect.bottom });
+                            topBarElement.dispatchEvent(evt);
+                        }, 50);
+                    }
+                });
+
+                menu.open({ x: ev.clientX, y: ev.clientY, isLeft: true });
             });
 
             // 注册 SQL 可视化生成器为思源选项卡
@@ -71,6 +176,8 @@ export class M_Aggregate {
                                         persistKey: `visual-echarts-from-sql-tab:${id}`,
                                         initialSQL: sql,
                                         loadSqlPresets: () => (conf.get('presets') || {}),
+                                        loadEchartsPresets: () => (conf.get('echartsPresets') || {}),
+                                        saveEchartsPresets: async (obj) => { conf.set('echartsPresets', obj); await conf.save(); },
                                         onGotoSQL: () => {
                                             // 打开弹窗版 SQL 生成器（共享同一套 PluginConfig 预设）
                                             new Dialog({
@@ -102,8 +209,44 @@ export class M_Aggregate {
                             // console.log("[Tab] 生成的 SQL:", _sql);
                         },
                     });
+                    const applyPresetIfExists = async (presetName?: string) => {
+                        const name = (presetName || '').trim();
+                        if (!name) return;
+                        try {
+                            await conf.load();
+                            const presets = conf.get('presets') || {};
+                            const snapshot = presets[name];
+                            if (!snapshot) {
+                                console.warn('[visual-sql] preset not found:', name);
+                                return;
+                            }
+                            const cloned = JSON.parse(JSON.stringify(snapshot));
+                            cloned.currentPresetName = name;
+                            (ui as any).hydrateState?.(cloned, { applyCollapse: true });
+                            (ui as any).rebuildSql?.();
+                            requestAnimationFrame(() => ui?.resize());
+                        } catch (err) {
+                            console.error('[visual-sql] failed to apply preset', err);
+                        }
+                    };
+
                     this.data.id = id;
                     aggregate._tabInstances.set(id, ui);
+
+                    try {
+                        const initData = (this as any).data || {};
+                        if (initData && initData.presetName) {
+                            applyPresetIfExists(initData.presetName);
+                        }
+                    } catch {}
+
+                    const presetListener = (event: Event) => {
+                        const detail = (event as CustomEvent).detail || {};
+                        if (!detail?.presetName) return;
+                        applyPresetIfExists(detail.presetName);
+                    };
+                    window.addEventListener(APPLY_VISUAL_SQL_PRESET_EVENT, presetListener as EventListener);
+                    (this as any)._applyPresetListener = presetListener;
                     // 顶部 Tabbar 按钮已移除，统一在 actions 区提供“转到 ECharts”
                     // 初次渲染后按当前视口计算布局
                     requestAnimationFrame(() => ui?.resize());
@@ -115,6 +258,11 @@ export class M_Aggregate {
                     if (ui) {
                         (ui as any).destroy?.();
                         aggregate._tabInstances.delete(id);
+                    }
+                    const listener = (this as any)._applyPresetListener as EventListener | undefined;
+                    if (listener) {
+                        window.removeEventListener(APPLY_VISUAL_SQL_PRESET_EVENT, listener);
+                        delete (this as any)._applyPresetListener;
                     }
                 },
                 resize() {
@@ -133,9 +281,15 @@ export class M_Aggregate {
                     const container = document.getElementById(`visual-echarts-tab-${id}`)! as HTMLElement;
                     const conf = new PluginConfig(aggregate.plugin.name, 'aggregate-sql');
                     await conf.load();
-                    const ui = new VisualEchartsUI(container, {
+                    // 支持从 openTab 传入初始 SQL（例如从内容聚合器跳转而来）
+                    const initData = (this as any).data || {};
+                    new VisualEchartsUI(container, {
                         persistKey: `visual-echarts-tab`,
+                        initialSQL: initData.initialSQL,
                         loadSqlPresets: () => (conf.get('presets') || {}),
+                        saveSqlPresets: async (obj) => { conf.set('presets', obj); await conf.save(); },
+                        loadEchartsPresets: () => (conf.get('echartsPresets') || {}),
+                        saveEchartsPresets: async (obj) => { conf.set('echartsPresets', obj); await conf.save(); },
                         onGotoSQL: () => {
                             // 打开弹窗版 SQL 生成器
                             new Dialog({
@@ -230,6 +384,9 @@ export class M_Aggregate {
                                         persistKey: 'siyuan-steve-tools:visual-echarts-from-sql',
                                         initialSQL: sql,
                                         loadSqlPresets: () => (conf2.get('presets') || {}),
+                                        saveSqlPresets: async (obj) => { conf2.set('presets', obj); await conf2.save(); },
+                                        loadEchartsPresets: () => (conf2.get('echartsPresets') || {}),
+                                        saveEchartsPresets: async (obj) => { conf2.set('echartsPresets', obj); await conf2.save(); },
                                         onGotoSQL: () => {
                                             // 在 Slash 场景下，直接弹 SQL 生成器
                                             new Dialog({
@@ -283,7 +440,10 @@ export class M_Aggregate {
                     await conf3.load();
                     const ui = new VisualEchartsUI(container, {
                         persistKey: 'siyuan-steve-tools:visual-echarts-slash',
-                        loadSqlPresets: () => (conf3.get('presets') || {})
+                        loadSqlPresets: () => (conf3.get('presets') || {}),
+                        saveSqlPresets: async (obj) => { conf3.set('presets', obj); await conf3.save(); },
+                        loadEchartsPresets: () => (conf3.get('echartsPresets') || {}),
+                        saveEchartsPresets: async (obj) => { conf3.set('echartsPresets', obj); await conf3.save(); }
                     });
                     // 追加“插入代码块”按钮
                     const bar = document.createElement('div');
@@ -292,7 +452,8 @@ export class M_Aggregate {
                     btn.className = 'b3-button';
                     btn.textContent = '插入ECharts IIFE';
                     btn.addEventListener('click', async () => {
-                        const code = (container.querySelector('[data-output]') as HTMLElement)?.textContent || '';
+                        // 直接从UI实例获取最新的IIFE代码
+                        const code = ui.getIIFE();
                         const curId = nodeElement.getAttribute('data-node-id');
                         const fenced = '```echarts\n' + code + '\n```';
                         await updateBlock('markdown', fenced, curId);
@@ -304,7 +465,8 @@ export class M_Aggregate {
                 }
             }
         ];
-
+        // 触发一次读取以避免未使用警告（_aggregatorBlockInstance 由内容聚合器页签使用）
+        void this._aggregatorBlockInstance;
     }
 
 
@@ -344,7 +506,7 @@ export class M_Aggregate {
         const menu = new Menu("topBarSQL", () => { });
         menu.addItem({
             icon: "iconSQL",
-            label: "页签模式",
+            label: "SQL页签",
             click: async () => {
                 await openTab({
                     app: (window as any).siyuan.ws.app,
@@ -355,7 +517,7 @@ export class M_Aggregate {
         });
         menu.addItem({
             icon: "iconSQL",
-            label: "弹窗模式",
+            label: "SQL弹窗",
             click: async () => {
                 const previewCols = (_settingdata["aggregate-sql-preview-columns"] || "").trim();
                 new Dialog({
@@ -400,6 +562,9 @@ export class M_Aggregate {
                                     persistKey: 'siyuan-steve-tools:visual-echarts-from-sql-modal',
                                     initialSQL: sql,
                                     loadSqlPresets: () => (conf.get('presets') || {}),
+                                    saveSqlPresets: async (obj) => { conf.set('presets', obj); await conf.save(); },
+                                    loadEchartsPresets: () => (conf.get('echartsPresets') || {}),
+                                    saveEchartsPresets: async (obj) => { conf.set('echartsPresets', obj); await conf.save(); },
                                     onGotoSQL: () => {
                                         new Dialog({
                                             title: 'SQL 可视化生成器',
@@ -461,6 +626,9 @@ export class M_Aggregate {
                     const ui = new VisualEchartsUI(container, {
                         persistKey: 'siyuan-steve-tools:visual-echarts-modal',
                         loadSqlPresets: () => (conf.get('presets') || {}),
+                        saveSqlPresets: async (obj) => { conf.set('presets', obj); await conf.save(); },
+                        loadEchartsPresets: () => (conf.get('echartsPresets') || {}),
+                        saveEchartsPresets: async (obj) => { conf.set('echartsPresets', obj); await conf.save(); },
                         onGotoSQL: () => {
                             new Dialog({
                                 title: 'SQL 可视化生成器',
@@ -481,6 +649,21 @@ export class M_Aggregate {
                         }
                     });
                     requestAnimationFrame(() => ui.resize());
+                }
+            });
+        }
+        if (_settingdata["aggregate-enable-content-aggregator"]) {
+            menu.addSeparator();
+            // 内容聚合器 - 仅保留页签形式
+            menu.addItem({
+                icon: "iconDatabase",
+                label: "内容聚合器",
+                click: async () => {
+                    await openTab({
+                        app: (window as any).siyuan.ws.app,
+                        custom: { icon: "iconDatabase", title: "内容聚合器", id: this.plugin.name + "content-aggregator", data: { id: null } },
+                        keepCursor: false,
+                    });
                 }
             });
         }

@@ -2,7 +2,7 @@ import { showMessage, openWindow, Protyle } from "siyuan";
 import { KBCalendarEvent, NestedKBCalendarEvent } from "./interface";
 import * as api from "@/api/api";
 import { allKBEvents } from "./kanban";
-import { showEvent } from "./myF";
+import { showEvent, statusMap } from "./myF";
 import { settingdata } from '@/index';
 //更新子级
 ////添加子级
@@ -67,7 +67,8 @@ export async function run_changestatus(Fr_event: NestedKBCalendarEvent, newstatu
         Fr_event.extendedProps.itemID,
         newstatus,
         "select");
-
+    console.log("status changed to:", newstatus[0].content);
+    api.setBlockAttrs(Fr_event.publicId, { 'custom-st-event': statusMap[newstatus[0].content] });
     api.handleDidaListEvent(Fr_event.extendedProps.rootid, Fr_event.publicId, Fr_event.extendedProps.itemID);
     console.log("done-updateAttrViewCell_pro-select");
     return true;
@@ -103,11 +104,11 @@ export function sortEvents(events: NestedKBCalendarEvent[]): NestedKBCalendarEve
         // 被引用的事件排在最后
         const isReferencedA = a.extendedProps.isReferenced === true;
         const isReferencedB = b.extendedProps.isReferenced === true;
-        
+
         if (isReferencedA !== isReferencedB) {
             return isReferencedA ? 1 : -1; // 被引用的事件排在后面
         }
-        
+
         // 已完成事件排在后面
         const statusA = a.extendedProps.status || '未完成';
         const statusB = b.extendedProps.status || '未完成';
@@ -117,25 +118,25 @@ export function sortEvents(events: NestedKBCalendarEvent[]): NestedKBCalendarEve
         if (isDoneA !== isDoneB) {
             return isDoneA ? 1 : -1; // 已完成在后
         }
-        
+
         // 有子事件的排在前面，如果都有或都没有子事件，则按优先级和时间排序
         const hasSubA = !!a.extendedProps.sub?.ids?.length;
         const hasSubB = !!b.extendedProps.sub?.ids?.length;
-        
+
         if (hasSubA !== hasSubB) {
             return hasSubA ? -1 : 1; // 有子事件的排在前面
         }
-        
+
         // 按优先级排序（高、中、低）
         const priorityA = a.extendedProps.priority || '无';
         const priorityB = b.extendedProps.priority || '无';
         const priorityValueA = PRIORITY_MAP[priorityA] || 0;
         const priorityValueB = PRIORITY_MAP[priorityB] || 0;
-        
+
         if (priorityValueA !== priorityValueB) {
             return priorityValueB - priorityValueA; // 高优先级排在前面
         }
-        
+
         // 优先级相同，按时间排序
         const timeA = new Date(a.range?.end || a.range?.start || a.extendedProps.Kstart).getTime();
         const timeB = new Date(b.range?.end || b.range?.start || b.extendedProps.Kstart).getTime();
@@ -336,13 +337,24 @@ export function filterRecurringEvents(events: KBCalendarEvent[],
     const filteredEvents: KBCalendarEvent[] = [];
     const recurringEventMap = new Map<string, KBCalendarEvent[]>();
 
+    const getOccurrenceKey = (event: KBCalendarEvent) => {
+        const base = event.publicId || event.extendedProps?.blockId || '';
+        const start = event.range?.start instanceof Date ? event.range.start.toISOString() : '';
+        return start ? `${base}__${start}` : base;
+    };
+
+    const pushIfNew = (event: KBCalendarEvent) => {
+        const key = getOccurrenceKey(event);
+        if (!key || processedEvents.has(key)) return;
+        processedEvents.add(key);
+        filteredEvents.push(event);
+    };
+
     // 首先处理非周期事件 - 直接添加到结果中
     events.forEach(event => {
         if (!event.extendedProps?.isRecurring) {
-            // 非周期事件直接添加，不做任何处理
-            filteredEvents.push(event);
+            pushIfNew(event);
         } else {
-            // 周期事件进行分类处理
             const blockId = event.extendedProps.blockId;
             if (!recurringEventMap.has(blockId)) {
                 recurringEventMap.set(blockId, []);
@@ -351,9 +363,8 @@ export function filterRecurringEvents(events: KBCalendarEvent[],
         }
     });
 
-    // 处理周期事件
-    recurringEventMap.forEach((events, blockId) => {
-        const sortedEvents = events
+    recurringEventMap.forEach(eventsForBlock => {
+        const sortedEvents = eventsForBlock
             .filter(event => !options.excludeStatuses?.includes(event.extendedProps?.status))
             .sort((a, b) => a.range.start.getTime() - b.range.start.getTime());
 

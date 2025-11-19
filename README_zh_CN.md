@@ -3,7 +3,6 @@ STEVETOOLS
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/loonghfut/siyuan-steve-tools)](https://github.com/loonghfut/siyuan-steve-tools/releases)
 [![GitHub stars](https://img.shields.io/github/stars/loonghfut/siyuan-steve-tools)](https://github.com/loonghfut/siyuan-steve-tools/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/loonghfut/siyuan-steve-tools)](https://github.com/loonghfut/siyuan-steve-tools/issues)
-[![GitHub license](https://img.shields.io/github/license/loonghfut/siyuan-steve-tools)](https://github.com/loonghfut/siyuan-steve-tools/blob/main/LICENSE)
 [![GitHub all releases](https://img.shields.io/github/downloads/loonghfut/siyuan-steve-tools/total)](https://github.com/loonghfut/siyuan-steve-tools/releases)
 
 这是一个自用工具集合？那为什么做了那么多我用不到的功能？那为什么耗费那么多夜晚来开发维护用不到的功能？（反思），~~在我自己使用的同时，分享出来也希望能够帮助到有相关需求的其他人。~~  
@@ -33,39 +32,43 @@ win端s3同步后，docker端感知s3同步。
 用法基本和叶归插件一样，由[BoysFight](https://github.com/BoysFight) PR实现。  
 7. WPS联动：  
 方便在思源中使用WPS（office文件嵌入，预览、编辑、同步），多维表格数据导入，图片上传。
-8. SQL聚合查询：  
-可视化生成SQL语句，查询思源数据库，支持多条件筛选，排序等功能，支持结果预览和嵌入块。
+8. 聚合查询：  
+可视化生成SQL语句，查询思源数据库，支持多条件筛选，排序等功能，支持结果预览和嵌入块。  
+可视化图表生成器（基于数据库，SQL查询）
 
 #### 开发动力来源[打赏](https://pic.imgdb.cn/item/6751b929d0e0a243d4de55a7.png) [star](https://github.com/loonghfut/siyuan-steve-tools) 
 
 #### 更新日志:
 
 
-### v0.16.0 (2025年09月28日)
-- 优化部分逻辑 (loonghfut)
-- 改进持久化逻辑 (loonghfut)
-- 优化界面 (loonghfut)
-- Implement code changes to enhance functionality and improve performance (loonghfut)
-- 优化颜色设置逻辑，移除文本输入，改为调色盘控制，并重构相关渲染功能 (loonghfut)
-- 增加拖拽手柄 (loonghfut)
-- 增加复制图表块 (loonghfut)
-- 删除部分无用代码 (loonghfut)
-- 数据库图表功能性完成 (loonghfut)
-- 记录点 (loonghfut)
-- 记录点2 (loonghfut)
-- 优化细节交互 (loonghfut)
-- 颜色设置优化 (loonghfut)
-- renderAttributeView (loonghfut)
-- 优化界面 (loonghfut)
-- 兼容更多数据类型 (loonghfut)
-- 优化数据库选择交互 (loonghfut)
-- 强化部分逻辑 (loonghfut)
-- 优化刷新视图功能，增加对 QQ 日历事件缓存的同步处理 (loonghfut)
-- 兼容卡片视图数据 (loonghfut)
-- 增加时间分桶功能，支持按年、月、日、小时进行数据分组 (loonghfut)
-- 增加预览置顶功能，允许用户固定结果预览区域 (loonghfut)
-- 美化设置界面 (loonghfut)
-- 更新版本号至0.16.0 (loonghfut)
+### v0.22.0 (2025年11月14日)
+- 白板兼容https开头链接跳转 (loonghfut)
+- feat(slide): 添加幻灯片截图功能，支持更新和复制到剪贴板 (loonghfut)
+- feat(card): 优化卡片 SVG 渲染，支持内容序列化和样式处理 (loonghfut)
+- feat(card): 添加资产嵌入功能，将图像和源文件转换为数据 URL (loonghfut)
+- 优化元素层级 (loonghfut)
+- feat(link): 将链接协议从siyuan更改为https，以支持更广泛的访问 (loonghfut)
+- feat(card): 更新时间戳格式，调整链接样式以增强可读性 (loonghfut)
+- feat(single-block): 添加单块形状工具及相关功能，包括工具和实用程序的实现 (loonghfut)
+- feat(single-block): 更新默认属性，优化链接格式，增强编辑体验 (loonghfut)
+- 优化细节 (loonghfut)
+- 解决block跳转问题 (loonghfut)
+- feat(single-block): 完善回车键处理逻辑，增强键盘事件的拦截与管理 (loonghfut)
+- feat(single-block): 优化回车键处理逻辑，按修饰键决定新块创建方向 (loonghfut)
+- feat(single-block): 更新默认字体大小为20，优化字体样式处理逻辑 (loonghfut)
+- 优化性能 (loonghfut)
+- fix(single-block): 修改链接格式，使用[*]代替[🔗]以符合规范 (loonghfut)
+- feat(single-block): 添加安全销毁逻辑，避免重复销毁 Protyle 实例，优化视口预加载检测 (loonghfut)
+- feat(single-block): 更新单块形状的默认字体大小为22，优化快速操作中的形状过滤逻辑 (loonghfut)
+- feat(slide): 添加 blockId 属性并实现跳转到关联笔记的功能 (loonghfut)
+- feat(tldraw): 添加 bookmark 属性以提供展示面板 (loonghfut)
+- fix(ui-overrides): 修改 Markdown 链接格式，使用[_]代替[*]以美化 (loonghfut)
+- feat(ui-overrides): 添加对 blockId 的验证逻辑，确保幻灯片中保存的块在思源中有效 (loonghfut)
+- feat(tldraw): 添加 dragstart 和 dragend 事件处理器以支持拖拽功能 (loonghfut)
+- feat(tldraw): 根据 blockId 类型调整卡片形状的大小和属性 (loonghfut)
+- feat(card-shape): 添加折叠状态属性并实现折叠功能 (loonghfut)
+- feat(tldraw): 添加拖拽名称处理 (loonghfut)
+- feat(plugin): 更新版本号至 0.22.0 (loonghfut)
 
 
 更多详见[提交记录](https://github.com/loonghfut/siyuan-steve-tools/commits/main-2/)

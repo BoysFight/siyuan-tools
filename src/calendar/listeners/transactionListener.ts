@@ -3,6 +3,7 @@ import { M_calendar } from '@/calendar/module-calendar';
 import * as api from '@/api/api';
 import { refreshKanban } from '@/calendar/kanban';
 import { statusMap } from '@/calendar/myF';
+import { interceptFetch } from '@/api/network-interceptor';
 
 interface WsOp { action: string;[k: string]: any }
 interface WsMsg { cmd: string; data?: any[] }
@@ -51,5 +52,107 @@ export function registerTransactionListener(plugin: steveTools, M_calendar: M_ca
         refreshKanban();
       }
     }
+  });
+
+  // 追加：前端网络请求监听（仅监听 /api/av/* 的成功响应）
+  // 用途：在 WebSocket 广播到达前，尽早感知“状态”列的变动并同步 block 自定义属性
+  interceptFetch({
+    filter: (url, method) => method === 'POST' && url.includes('/api/av/'),
+    onResponse: async (ctx) => {
+      try {
+        if (!ctx.resOk || ctx.resStatus !== 200) return;
+        const url = ctx.url;
+        const body = (ctx.reqBody || {}) as any;
+
+        // 只对我们关心的数据库进行处理
+        const avID: string | undefined = body?.avID;
+        if (!avID || !M_calendar.av_ids || !M_calendar.av_ids.map(i => i.id).includes(avID)) return;
+
+        // 抽取选择值（兼容 select/mSelect）
+        const getSelectValue = (v: any): string | undefined => {
+          if (!v) return undefined;
+          if (Array.isArray(v.mSelect) && v.mSelect[0]?.content) return v.mSelect[0].content;
+          if (v.select?.content) return v.select.content;
+          return undefined;
+        };
+
+        // 1) 单项更新：/api/av/setAttributeViewBlockAttr
+        if (url.includes('/api/av/setAttributeViewBlockAttr')) {
+          const itemID: string | undefined = body?.itemID;
+          const keyID: string | undefined = body?.keyID;
+          const selectValue = getSelectValue(body?.value);
+          if (!itemID || !keyID) return;
+
+          // 确认该 keyID 是“状态”字段
+          const map = await api.getAttributeViewBoundBlockIDsByItemIDs(avID, [itemID]);
+          const blockId = map[itemID];
+          if (!blockId) return;
+
+          const avDetails = await api.getAttributeViewKeys(blockId);
+          let statusKeyDefinition: any;
+          let priorityKeyDefinition: any;
+          if (avDetails && avDetails[0]?.keyValues) {
+            const statusKeyValue = avDetails[0].keyValues.find((kv: any) => kv.key && kv.key.name === '状态');
+            if (statusKeyValue) statusKeyDefinition = statusKeyValue.key;
+            const priorityKeyValue = avDetails[0].keyValues.find((kv: any) => kv.key && kv.key.name === '优先级');
+            if (priorityKeyValue) priorityKeyDefinition = priorityKeyValue.key;
+          }
+          const isStatus = !!(statusKeyDefinition && statusKeyDefinition.id === keyID);
+          if (isStatus && selectValue) {
+            // 状态列：根据值设置自定义属性
+            await api.setBlockAttrs(blockId, { 'custom-st-event': statusMap[selectValue] });
+            return;
+          }
+          // 其他列：刷新视图
+          try { M_calendar.avButton(); } catch { }
+          try { refreshKanban(); } catch { }
+          return;
+        }
+
+        // 2) 批量更新：/api/av/batchSetAttributeViewBlockAttrs
+        if (url.includes('/api/av/batchSetAttributeViewBlockAttrs') && Array.isArray(body?.values)) {
+          const values: Array<{ keyID: string; itemID: string; value: any } & Record<string, any>> = body.values;
+          if (values.length === 0) return;
+          // 先收集所有涉及的 itemID，并映射到 blockId
+          const itemIDs = Array.from(new Set(values.map(v => v.itemID).filter(Boolean)));
+          if (itemIDs.length === 0) return;
+          const map = await api.getAttributeViewBoundBlockIDsByItemIDs(avID, itemIDs);
+
+          // 为每条涉及“状态”字段做属性设置，其它字段统一做一次刷新
+          let refreshNeeded = false;
+          for (const v of values) {
+            const blockId = map[v.itemID];
+            if (!blockId) continue;
+
+            const avDetails = await api.getAttributeViewKeys(blockId);
+            let statusKeyDefinition: any;
+            if (avDetails && avDetails[0]?.keyValues) {
+              const statusKeyValue = avDetails[0].keyValues.find((kv: any) => kv.key && kv.key.name === '状态');
+              if (statusKeyValue) statusKeyDefinition = statusKeyValue.key;
+            }
+            const isStatus = !!(statusKeyDefinition && statusKeyDefinition.id === v.keyID);
+            if (isStatus) {
+              const selectValue = getSelectValue(v.value);
+              if (selectValue) {
+                await api.setBlockAttrs(blockId, { 'custom-st-event': statusMap[selectValue] });
+                continue;
+              }
+              // 没有值（被清空等），无法设置映射，改为刷新
+              refreshNeeded = true;
+              continue;
+            }
+            // 非状态列：标记需要刷新
+            refreshNeeded = true;
+          }
+          if (refreshNeeded) {
+            try { M_calendar.avButton(); } catch { }
+            try { refreshKanban(); } catch { }
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('transactionListener 网络拦截处理失败:', err);
+      }
+    },
   });
 }

@@ -16,7 +16,6 @@ import {
     DefaultMainMenu,
     TldrawUiMenuGroup,
     DefaultMainMenuContent,
-    TLEventMap,
     track, // 导入 track
     useRelevantStyles,
     DefaultStylePanelContent,
@@ -34,12 +33,21 @@ declare module '@tldraw/tldraw' {
 }
 import React from 'react';
 import { $currentSlide, getSlides, moveToSlide } from './SlideShape/useSlides';
+import { captureSlideScreenshot } from './SlideShape/captureSlideScreenshot';
 import { SlidesPanel } from './SlideShape/SlidesPanel';
 import { ICardShape } from './CardShape/card-shape-types';
+import { ISingleBlockShape } from './SingleBlockShape/single-block-shape-types';
 import { SlideShape } from './SlideShape/SlideShapeUtil';
 import { openTab, showMessage } from 'siyuan';
+import { upload, appendBlock, updateBlock, getBlockByID } from '@/api/api'
+import { getCursorBlockId } from '@/api/api2'
 import { settingdata } from '@/index';
 // There's a guide at the bottom of this file!
+
+type CardLikeShape = ICardShape | ISingleBlockShape;
+
+const isCardLikeShape = (shape: any): shape is CardLikeShape =>
+    shape?.type === 'card' || shape?.type === 'single-block';
 
 export const uiOverrides: TLUiOverrides = {
     tools(editor, tools) {
@@ -52,6 +60,15 @@ export const uiOverrides: TLUiOverrides = {
             kbd: 'c',
             onSelect: () => {
                 editor.setCurrentTool('card')
+            },
+        }
+        tools['single-block'] = {
+            id: 'single-block',
+            icon: 'bulletList',
+            label: 'Single Block',
+            kbd: 'b',
+            onSelect: () => {
+                editor.setCurrentTool('single-block')
             },
         }
         tools.slide = {
@@ -108,11 +125,11 @@ export const uiOverrides: TLUiOverrides = {
             },
             'zoom-in': {
                 ...actions['zoom-in'], // Keep default behavior
-                kbd: '', 
+                kbd: '',
             },
             'zoom-out': {
                 ...actions['zoom-out'], // Keep default behavior
-                kbd: '', 
+                kbd: '',
             },
             // 'toggle-grid': { ...actions['toggle-grid'], kbd: '' },
         }
@@ -123,6 +140,7 @@ const CustomStylePanel = track(() => {
     const editor = useEditor()
     const selectedShapes = useValue('selected shapes', () => editor.getSelectedShapes(), [editor])
     const styles = useRelevantStyles()
+    const [isCapturingScreenshot, setIsCapturingScreenshot] = React.useState(false)
 
     const isSingleSlideSelected = selectedShapes.length === 1 && selectedShapes[0].type === 'slide';
     const slideShape = isSingleSlideSelected ? (selectedShapes[0] as SlideShape) : null;
@@ -140,7 +158,7 @@ const CustomStylePanel = track(() => {
         (e: React.ChangeEvent<HTMLInputElement>) => {
             if (slideShape) {
                 // 使用事务来确保撤销/重做能正确处理连续输入
-                editor.batch(() => {
+                editor.run(() => {
                     editor.updateShape({
                         id: slideShape.id,
                         type: 'slide',
@@ -178,6 +196,155 @@ const CustomStylePanel = track(() => {
         },
         []
     );
+    // --- 处理截图更新 ---
+    const handleCaptureScreenshot = React.useCallback(async () => {
+        if (!slideShape || isCapturingScreenshot) return
+
+        setIsCapturingScreenshot(true)
+        try {
+            let targetBlockId: string | null = (slideShape.props.blockId ?? '').trim()
+            if (!targetBlockId) {
+                targetBlockId = null
+            }
+
+            const cursorId = getCursorBlockId()
+
+            // 若 slide 中保存了 blockId，则在思源中验证其是否仍然有效
+            if (targetBlockId) {
+                try {
+                    const blk = await getBlockByID(targetBlockId)
+                    if (!blk || !blk.id) {
+                        console.warn('保存的 blockId 在思源中未找到: ', targetBlockId)
+                        showMessage('幻灯片保存的块在思源中未找到，后续将作为新块插入', 3000, 'info')
+                        targetBlockId = null
+                    }
+                } catch (err) {
+                    console.warn('检查保存的 blockId 时出错', err)
+                    // 将其视为无效，允许在有光标时新建
+                    targetBlockId = null
+                }
+            }
+
+            if (!targetBlockId && !cursorId) {
+                showMessage('未检测到已有截图块且未获取到光标位置，已取消操作', 3000, 'error')
+                return
+            }
+
+            const result = await captureSlideScreenshot(editor, slideShape.id, {
+                format: 'png',
+                updateShape: true,
+            })
+            if (result) {
+                try {
+                    const now = new Date()
+                    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+                    const rawName = slideShape?.props?.name || 'slide'
+                    const safeName = String(rawName).replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
+                    const ext = result.format === 'svg' ? 'svg' : 'png'
+                    const fileName = `slide_${safeName}_${ts}.${ext}`
+                    const blobType = result.blob.type || 'image/png'
+                    const file = new File([result.blob], fileName, { type: blobType })
+                    const uploadDir = 'assets/st_slides'
+
+                    const upRes = await upload(uploadDir, [file])
+                    const succMap = (upRes as any)?.succMap || {}
+                    const kernelPath: string | undefined = succMap[fileName]
+                    if (!kernelPath) {
+                        throw new Error('upload screenshot failed: no succMap path')
+                    }
+                    const assetPath = kernelPath.replace(/^data\//, '')
+
+                    const alt = rawName || 'slide'
+                    const md = `[_](https://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${slideShape.id})![${alt}](${assetPath})\n{: custom-st-slide-id="${slideShape.id}"}`
+
+                    let fallbackFromUpdateFailure = false
+
+                    if (targetBlockId) {
+                        try {
+                            await updateBlock('markdown', md, targetBlockId)
+                            editor.updateShape({
+                                id: slideShape.id,
+                                type: 'slide',
+                                props: { blockId: targetBlockId },
+                            })
+                            showMessage('已更新之前插入的幻灯片截图')
+                            return
+                        } catch (updateErr) {
+                            console.error('更新现有幻灯片截图块失败', updateErr)
+                            if (!cursorId) {
+                                showMessage('更新截图块失败，且未检测到光标位置可新建截图', 4000, 'error')
+                                return
+                            }
+                            fallbackFromUpdateFailure = true
+                            targetBlockId = null
+                        }
+                    }
+
+                    if (!targetBlockId) {
+                        if (!cursorId) {
+                            showMessage('未检测到光标位置，已取消插入新的截图', 3000, 'error')
+                            return
+                        }
+
+                        const appendRes = await appendBlock('markdown', md, cursorId)
+                        const newBlockId = appendRes?.[0]?.doOperations?.[0]?.id as string | undefined
+                        if (typeof newBlockId === 'string' && newBlockId) {
+                            editor.updateShape({
+                                id: slideShape.id,
+                                type: 'slide',
+                                props: { blockId: newBlockId },
+                            })
+                        } else {
+                            console.warn('无法获取新建幻灯片截图块的 ID', appendRes)
+                        }
+                        showMessage(
+                            fallbackFromUpdateFailure
+                                ? '原块更新失败，已在光标位置插入新的幻灯片截图'
+                                : '已将幻灯片截图插入到当前光标位置'
+                        )
+                    }
+                } catch (insErr) {
+                    console.error('insert slide screenshot to Siyuan failed', insErr)
+                    showMessage('已更新截图，但插入到思源失败', 4000, 'error')
+                }
+            } else {
+                showMessage('生成幻灯片截图失败', -1, 'error')
+            }
+        } catch (error) {
+            console.error('capture slide screenshot failed', error)
+            showMessage('生成幻灯片截图失败', -1, 'error')
+        } finally {
+            setIsCapturingScreenshot(false)
+        }
+    }, [editor, slideShape, isCapturingScreenshot])
+
+    const handleOpenSlideBlock = React.useCallback(async () => {
+        if (!slideShape) {
+            return
+        }
+
+        const blockId = slideShape.props.blockId
+        if (!blockId) {
+            showMessage('幻灯片暂未绑定思源块', 3000, 'error')
+            return
+        }
+
+        try {
+            await openTab({
+                app: window.siyuan.ws.app,
+                doc: {
+                    id: blockId,
+                    action: ['cb-get-hl', 'cb-get-focus'],
+                    zoomIn: true,
+                },
+                position: 'right',
+                keepCursor: false,
+            })
+        } catch (err) {
+            console.error('打开幻灯片关联的思源块失败', err)
+            showMessage('打开关联的思源块失败', 4000, 'error')
+        }
+    }, [slideShape])
 
     const handleCopyLink = React.useCallback(async () => {
         if (slideShape && rootId !== '') { // 检查 rootId 是否已设置
@@ -185,9 +352,9 @@ const CustomStylePanel = track(() => {
             // 使用幻灯片名称，如果为空则使用 rootId 作为后备标题
             let url: string;
             if (settingdata['copyLinkTitle']) {
-                url = `[slide:${slideShape.props.name}](siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${shapeId})`;
+                url = `[slide:${slideShape.props.name}](https://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${shapeId})`;
             } else {
-                url = `siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${shapeId}`
+                url = `https://plugins/siyuan-steve-tools/?rootid=${rootId}&blockid=${blockId}&title=${title}&shapeid=${shapeId}`;
             }
             try {
                 await navigator.clipboard.writeText(url);
@@ -230,6 +397,24 @@ const CustomStylePanel = track(() => {
                     >
                         复制链接
                     </button>
+                    <button
+                        className="tlui-button"
+                        onClick={handleOpenSlideBlock}
+                        onPointerDown={stopEventPropagation}
+                        style={{ marginTop: '-8px', width: '100%' }}
+                        disabled={!slideShape.props.blockId}
+                    >
+                        跳转到笔记
+                    </button>
+                    <button
+                        className="tlui-button"
+                        onClick={handleCaptureScreenshot}
+                        onPointerDown={stopEventPropagation}
+                        style={{ marginTop: '-8px', width: '100%' }}
+                        disabled={isCapturingScreenshot}
+                    >
+                        {isCapturingScreenshot ? '生成中…' : '更新截图'}
+                    </button>
                 </div>
             )}
         </DefaultStylePanel>
@@ -260,9 +445,9 @@ function CustomQuickActions() {
                 <TldrawUiMenuItem id="external-link" icon="external-link" label="复制白板链接" onSelect={() => {
                     let url: string;
                     if (settingdata['copyLinkTitle']) {
-                        url = `[画板:${title}](siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&title=${title})`;
+                        url = `[画板:${title}](https://plugins/siyuan-steve-tools/?rootid=${rootId}&title=${title})`;
                     } else {
-                        url = `siyuan://plugins/siyuan-steve-tools/?rootid=${rootId}&title=${title}`
+                        url = `https://plugins/siyuan-steve-tools/?rootid=${rootId}&title=${title}`
                     }
                     navigator.clipboard.writeText(url).then(() => {
                         showMessage('链接已复制到剪贴板!');
@@ -270,6 +455,31 @@ function CustomQuickActions() {
                         console.error('无法复制链接: ', err);
                     });
                 }} />
+            </div>
+            <div>
+                <TldrawUiMenuItem
+                    id="refresh-all-cards"
+                    icon="arrow-cycle"
+                    label="刷新所有卡片"
+                    onSelect={() => {
+                        const shapes = editor.getCurrentPageShapes().filter(isCardLikeShape) as CardLikeShape[]
+                        if (shapes.length === 0) {
+                            showMessage('当前画布无卡片')
+                            return
+                        }
+                        const nonce = Date.now()
+                        editor.run(() => {
+                            for (const s of shapes) {
+                                editor.updateShape({
+                                    id: s.id,
+                                    type: 'card',
+                                    props: { ...s.props, refreshNonce: nonce },
+                                })
+                            }
+                        })
+                        showMessage(`已刷新 ${shapes.length} 张卡片`)
+                    }}
+                />
             </div>
         </DefaultQuickActions>
     )
@@ -284,13 +494,15 @@ export const components: TLComponents = {
     Toolbar: (props) => {
         const tools = useTools()
         const isCardSelected = useIsToolSelected(tools['card'])
+        const isSingleBlockSelected = useIsToolSelected(tools['single-block'])
         const isSlideSelected = useIsToolSelected(tools['slide'])
         // const isMindMapNodeSelected = useIsToolSelected(tools['mindmap-node'])
         return (
             <DefaultToolbar {...props}>
                 <TldrawUiMenuItem {...tools['card']} isSelected={isCardSelected} />
+                <TldrawUiMenuItem {...tools['single-block']} isSelected={isSingleBlockSelected} />
                 <TldrawUiMenuItem {...tools['slide']} isSelected={isSlideSelected} />
-            
+
                 <DefaultToolbarContent />
             </DefaultToolbar>
         )
@@ -300,6 +512,7 @@ export const components: TLComponents = {
         return (
             <DefaultKeyboardShortcutsDialog {...props}>
                 <TldrawUiMenuItem {...tools['card']} />
+                <TldrawUiMenuItem {...tools['single-block']} />
                 <TldrawUiMenuItem {...tools['slide']} />
                 <DefaultKeyboardShortcutsDialogContent />
             </DefaultKeyboardShortcutsDialog>
@@ -348,8 +561,12 @@ export const components: TLComponents = {
             'selection bounds',
             () => {
                 const selectedShapes = editor.getSelectedShapes()
-                // 只处理单个选中且为卡片类型的情况
-                if (selectedShapes.length !== 1 || selectedShapes[0].type !== 'card') {
+                if (selectedShapes.length !== 1) {
+                    return null
+                }
+
+                const selectedShape = selectedShapes[0]
+                if (!isCardLikeShape(selectedShape)) {
                     return null
                 }
 
@@ -358,7 +575,7 @@ export const components: TLComponents = {
                 if (!rotatedScreenBounds) return null
 
                 return {
-                    id: selectedShapes[0].id,
+                    id: selectedShape.id,
                     x: rotatedScreenBounds.x - screenBounds.x,
                     y: rotatedScreenBounds.y - screenBounds.y,
                     width: rotatedScreenBounds.width,
@@ -413,55 +630,61 @@ export const components: TLComponents = {
                 <button
                     style={buttonStyle}
                     onClick={() => {
-                        showMessage('开发中。。。');
+                        // 刷新卡片：通过刷新 nonce 触发 Card 组件的重新挂载逻辑
+                        const shape = editor.getShape(selectionInfo.id)
+                        if (!isCardLikeShape(shape)) return
+
+                        const shapeLabel = shape.type === 'card' ? '卡片' : '块'
+                        editor.updateShape({
+                            id: selectionInfo.id,
+                            type: shape.type,
+                            props: {
+                                ...shape.props,
+                                // 更新 nonce 以触发 useEffect，重建静态/实例视图
+                                refreshNonce: Date.now(),
+                            },
+                        })
+                        showMessage(`${shapeLabel}已刷新`)
                     }}
                     title="刷新卡片"
                 >
                     🔄
                 </button>
                 <button
-                    style={buttonStyle}
-                    onClick={() => {
-                        // 适应内容尺寸
-                        const shape = editor.getShape(selectionInfo.id) as ICardShape;
-                        if (!shape || !shape.props.blockId) return;
-
-                        // 找到与此卡片关联的容器元素
-                        const cardElement = document.querySelector(`[data-shape-id="${selectionInfo.id}"]`);
-                        if (!cardElement) return;
-
-                        // 找到Protyle内容元素
-                        const contentElement = cardElement.querySelector(".protyle-wysiwyg");
-                        if (!contentElement) return;
-
-                        // 获取内容的实际尺寸
-                        const contentRect = contentElement.getBoundingClientRect();
-
-                        // 适当增加边距，确保内容完全显示
-                        const newWidth = Math.max(contentRect.width + 40, 200);
-                        const newHeight = Math.max(contentRect.height + 40, 100);
-
-                        // 更新卡片尺寸
-                        editor.updateShape({
-                            id: shape.id,
-                            type: shape.type,
-                            props: {
-                                ...shape.props,
-                                w: newWidth,
-                                h: newHeight,
-                            },
-                        });
+                    style={{
+                        ...buttonStyle,
+                        // 仅对 card 类型显示，其他类型隐藏
+                        display: editor.getShape(selectionInfo.id)?.type === 'card' ? undefined : 'none',
                     }}
-                    title="适应内容尺寸"
+                    onClick={() => {
+                        const shape = editor.getShape(selectionInfo.id)
+                        if (!shape || shape.type !== 'card') return
+
+                        const card = shape as ICardShape
+                        const collapsed = !!card.props?.isCollapsed
+                        editor.updateShape({
+                            id: card.id,
+                            type: 'card',
+                            props: {
+                                ...card.props,
+                                isCollapsed: !collapsed,
+                            },
+                        })
+                    }}
+                    title={
+                        ((editor.getShape(selectionInfo.id) as ICardShape | undefined)?.props?.isCollapsed)
+                            ? '展开卡片'
+                            : '折叠卡片'
+                    }
                 >
-                    📏
+                    {((editor.getShape(selectionInfo.id) as ICardShape | undefined)?.props?.isCollapsed) ? '▶' : '▼'}
                 </button>
                 <button
                     style={buttonStyle}
                     onClick={() => {
                         // 放大字体
-                        const shape = editor.getShape(selectionInfo.id) as ICardShape;
-                        if (!shape) return;
+                        const shape = editor.getShape(selectionInfo.id);
+                        if (!isCardLikeShape(shape)) return;
 
                         // 获取当前字体大小
                         const currentSize = shape.props.fontSize || 16;
@@ -472,7 +695,7 @@ export const components: TLComponents = {
                         // 更新卡片属性
                         editor.updateShape({
                             id: selectionInfo.id,
-                            type: 'card',
+                            type: shape.type,
                             props: {
                                 ...shape.props,
                                 fontSize: newSize,
@@ -486,20 +709,20 @@ export const components: TLComponents = {
                 <button
                     style={buttonStyle}
                     onClick={() => {
-                        // 放大字体
-                        const shape = editor.getShape(selectionInfo.id) as ICardShape;
-                        if (!shape) return;
+                        // 减小字体
+                        const shape = editor.getShape(selectionInfo.id);
+                        if (!isCardLikeShape(shape)) return;
 
                         // 获取当前字体大小
                         const currentSize = shape.props.fontSize || 16;
 
-                        // 放大字体 (增加2px)
+                        // 减小字体 (减少2px)
                         const newSize = currentSize - 2;
 
                         // 更新卡片属性
                         editor.updateShape({
                             id: selectionInfo.id,
-                            type: 'card',
+                            type: shape.type,
                             props: {
                                 ...shape.props,
                                 fontSize: newSize,
@@ -514,12 +737,12 @@ export const components: TLComponents = {
                     style={buttonStyle}
                     onClick={async () => {
                         // 获取卡片数据并跳转到笔记
-                        const cardShape = editor.getShape(selectionInfo.id);
-                        const blockId = (cardShape as ICardShape)?.props?.blockId || "";
-                        if (!blockId) {
+                        const shape = editor.getShape(selectionInfo.id);
+                        if (!isCardLikeShape(shape) || !shape.props.blockId) {
                             console.error("未找到块ID");
                             return;
                         }
+                        const blockId = shape.props.blockId;
                         await openTab({
                             app: window.siyuan.ws.app,
                             doc: {

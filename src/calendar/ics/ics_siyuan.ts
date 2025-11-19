@@ -318,6 +318,29 @@ export class ICSImporter {
         return date.toLocaleString('zh-CN');
     }
 
+    private formatDateOnly(date: Date): string {
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    private formatShortTime(date: Date, isAllDay: boolean): string {
+        if (isAllDay) {
+            return '全天';
+        }
+        const hour = date.getHours().toString().padStart(2, '0');
+        const minute = date.getMinutes().toString().padStart(2, '0');
+        return `${hour}:${minute}`;
+    }
+
+    private formatDateTimeCompact(date: Date, isAllDay: boolean): string {
+        if (isAllDay) {
+            return this.formatDateOnly(date);
+        }
+        return `${this.formatDateOnly(date)} ${this.formatShortTime(date, false)}`;
+    }
+
     /**
      * 简单的模板变量替换
      */
@@ -341,14 +364,22 @@ export class ICSImporter {
 
     /**
      * 生成日程超级块内容
+     * 返回渲染后的内容与可选的模板内指定块 ID（当模板包含 {{SYID}} 时生成并返回）
      */
-    private generateEventBlock(event: ICSEvent): string {
+    private async generateEventBlock(event: ICSEvent): Promise<{ content: string; blockId?: string }> {
         // 获取自定义模板内容，如果没有则使用默认内容
         const contentTemplate = this.settings['cal-ics-custom-template'] || this.getDefaultContentTemplate();
 
         // 准备模板数据
-        const startTimeStr = event.startTime ? this.formatDateTime(event.startTime, event.isAllDay) : '';
-        const endTimeStr = event.endTime ? this.formatDateTime(event.endTime, event.isAllDay) : '';
+        const isAllDay = event.isAllDay === true;
+        const startTimeStr = event.startTime ? this.formatDateTime(event.startTime, isAllDay) : '';
+        const endTimeStr = event.endTime ? this.formatDateTime(event.endTime, isAllDay) : '';
+        const startDateOnly = event.startTime ? this.formatDateOnly(event.startTime) : '';
+        const endDateOnly = event.endTime ? this.formatDateOnly(event.endTime) : '';
+        const startCompact = event.startTime ? this.formatDateTimeCompact(event.startTime, isAllDay) : '';
+        const endCompact = event.endTime ? this.formatDateTimeCompact(event.endTime, isAllDay) : '';
+        const shortStartTime = event.startTime ? this.formatShortTime(event.startTime, isAllDay) : '';
+        const shortEndTime = event.endTime ? this.formatShortTime(event.endTime, isAllDay) : '';
 
         // 处理状态映射
         const statusMap = {
@@ -376,28 +407,42 @@ export class ICSImporter {
         const tagsText = event.tags && event.tags.length > 0 ?
             event.tags.map(tag => `#${tag}`).join(' ') : '';
 
+    // 仅当模板包含 {{SYID}} 时，生成一个思源块 ID 供模板内部使用（不绑定到最外层超级块）
+    const needSYID = /\{\{\s*SYID\s*\}\}/.test(contentTemplate);
+    const syid = needSYID ? await api.generateSiyuanID() as string : undefined;
+
         const templateData = {
             title: event.title || '',
             startTime: startTimeStr,
             endTime: endTimeStr,
+            startDate: startDateOnly,
+            endDate: endDateOnly,
+            startDateTime: startCompact,
+            endDateTime: endCompact,
+            short_startTime: shortStartTime,
+            short_endTime: shortEndTime,
             location: event.location || '',
             description: processedDescription,
             status: statusText,
             recurrence: event.recurrence || '',
-            tags: tagsText
+            tags: tagsText,
+            // 新增：模板可以使用 {{SYID}} 来引用该块 ID；若未启用则为空字符串
+            SYID: syid ?? '',
         };
 
         // 渲染用户自定义的内容部分
         const renderedContent = this.renderTemplate(contentTemplate, templateData);
 
-        // 包装成超级块并添加必要的属性
-        return `{{{row
+    // 包装成超级块并添加必要的属性（不在最外层绑定 SYID）
+        const content = `{{{row
 ${renderedContent}
 }}}
 {: custom-ics-id="${event.uid}" custom-ics-event="true"}
 
 {: custom-ics-id="null" }
 `;
+
+    return { content, blockId: syid };
     }
 
     /**
@@ -642,24 +687,24 @@ ${renderedContent}
                     continue;
                 }
 
-                const blockContent = this.generateEventBlock(event);
+                const { content: blockContent, blockId: targetBlockId } = await this.generateEventBlock(event);
                 try {
                     console.log(`将事件反馈`, blockContent);
                     const result = await api.appendBlock("markdown", blockContent, dailyNoteId);
 
                     // 如果插入成功且启用了数据库功能，添加到数据库
                     if (result && this.settings['cal-ics-add-to-database']) {
-                        // 从返回结果中获取新创建的块ID
-                        let newBlockId = null;
-                        if (Array.isArray(result) && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
-                            newBlockId = result[0].doOperations[0].id;
+                        // 优先使用模板生成的 SYID；否则回退解析 append 结果中的新块 ID
+                        let useBlockId = targetBlockId;
+                        if (!useBlockId && Array.isArray(result) && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
+                            useBlockId = result[0].doOperations[0].id;
                         }
 
-                        if (newBlockId) {
-                            await this.addBlockToDatabase(newBlockId, event);
+                        if (useBlockId) {
+                            await this.addBlockToDatabase(useBlockId, event);
                             console.log(`已将ICS事件 "${event.title}" 添加到数据库 (日记模式)`);
                         } else {
-                            console.warn(`无法获取新创建块的ID，跳过添加到数据库 (日记模式): ${event.title}`);
+                            console.warn(`无法确定新创建块的ID，跳过添加到数据库 (日记模式): ${event.title}`);
                         }
                     }
 
@@ -740,25 +785,25 @@ ${renderedContent}
                 }
                 console.log(`处理事件:taggggg `, event.tags);
 
-                // 生成超级块内容
-                const blockContent = this.generateEventBlock(event);
+                // 生成超级块内容（带指定 SYID）
+                const { content: blockContent, blockId: targetBlockId2 } = await this.generateEventBlock(event);
 
                 // 插入到文档
                 const result = await api.appendBlock("markdown", blockContent, documentId);
-                // console.log(`生成超级块内容: ${blockContent}`,result);
+                console.log(`生成超级块内容: ${blockContent}`);
                 // 如果插入成功且启用了数据库功能，添加到数据库
                 if (result && this.settings['cal-ics-add-to-database']) {
-                    // 从返回结果中获取新创建的块ID
-                    let newBlockId = null;
-                    if (Array.isArray(result) && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
-                        newBlockId = result[0].doOperations[0].id;
+                    // 优先使用模板生成的 SYID；否则回退解析 append 结果中的新块 ID
+                    let useBlockId = targetBlockId2;
+                    if (!useBlockId && Array.isArray(result) && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
+                        useBlockId = result[0].doOperations[0].id;
                     }
 
-                    if (newBlockId) {
-                        await this.addBlockToDatabase(newBlockId, event);
+                    if (useBlockId) {
+                        await this.addBlockToDatabase(useBlockId, event);
                         console.log(`已将ICS事件 "${event.title}" 添加到数据库`);
                     } else {
-                        console.warn(`无法获取新创建块的ID，跳过添加到数据库: ${event.title}`);
+                        console.warn(`无法确定新创建块的ID，跳过添加到数据库: ${event.title}`);
                     }
                 }
 

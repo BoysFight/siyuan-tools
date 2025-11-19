@@ -2,7 +2,7 @@ import * as api from '@/api/api';
 import { ViewItem } from '@/calendar/interface';
 import * as sy from 'siyuan'
 import { settingdata } from '@/index';
-import { Calendar } from '@fullcalendar/core';
+import { Calendar, DurationInput } from '@fullcalendar/core';
 import { moduleInstances } from '@/index';
 // Define interfaces for better type safety
 import { ISelectOption } from "@/calendar/interface";
@@ -53,9 +53,115 @@ interface CalendarEventItem {
     end?: Date | null;
     allDay: boolean;
     rrule?: string;
-    duration?: number | string;
+    duration?: DurationInput;
     timeZone?: string;
     extendedProps: CalendarEventExtendedProps;
+}
+export interface UnscheduledEvent {
+    blockId: string;
+    itemID: string;
+    rootid: string;
+    title: string;
+    status?: string;
+    priority?: string;
+    category?: string;
+    tags?: string[];
+    description?: string;
+    timeKeyID?: string;
+    allDayKeyID?: string;
+    statusKeyID?: string;
+    viewId?: string;
+    viewName?: string;
+    overdue?: boolean; // 新增：是否为“过期未完成”
+}
+
+let currentUnscheduledEvents: UnscheduledEvent[] = [];
+
+export function setUnscheduledEvents(events: UnscheduledEvent[]): void {
+    currentUnscheduledEvents = events;
+}
+
+export function getUnscheduledEvents(): UnscheduledEvent[] {
+    return currentUnscheduledEvents;
+}
+
+export function findUnscheduledEvent(blockId: string, itemID?: string): UnscheduledEvent | undefined {
+    return currentUnscheduledEvents.find(event => {
+        const matchesBlock = event.blockId === blockId;
+        if (itemID) {
+            return matchesBlock && event.itemID === itemID;
+        }
+        return matchesBlock;
+    });
+}
+
+export function removeUnscheduledEvent(target: UnscheduledEvent | { blockId?: string; itemID?: string }): void {
+    if (!target) {
+        return;
+    }
+    const blockId = (target as any)?.blockId as string | undefined;
+    const itemID = (target as any)?.itemID as string | undefined;
+    currentUnscheduledEvents = currentUnscheduledEvents.filter(event => {
+        const blockMatch = blockId ? event.blockId === blockId : false;
+        const itemMatch = itemID ? event.itemID === itemID : false;
+        if (blockId && itemID) {
+            return !(blockMatch && itemMatch);
+        }
+        if (blockId) {
+            return !blockMatch;
+        }
+        if (itemID) {
+            return !itemMatch;
+        }
+        return true;
+    });
+}
+
+export async function scheduleUnscheduledEvent(event: UnscheduledEvent, dateStr: string, allDay: boolean): Promise<boolean> {
+    if (!event) {
+        sy.showMessage('未找到目标事件，无法安排', 3000, 'error');
+        return false;
+    }
+    if (!event.timeKeyID) {
+        sy.showMessage('未找到开始时间字段，无法安排事件', 3000, 'error');
+        return false;
+    }
+    if (!dateStr) {
+        sy.showMessage('未获取到有效的日期，无法安排事件', 3000, 'error');
+        return false;
+    }
+    const formattedDate = allDay && dateStr && !dateStr.includes('T')
+        ? `${dateStr}T00:00`
+        : dateStr;
+    try {
+        const updateTasks: Promise<any>[] = [];
+        updateTasks.push(api.updateAttrViewCell_pro(
+            event.blockId,
+            event.rootid,
+            event.timeKeyID,
+            event.itemID,
+            formattedDate,
+            'date'
+        ));
+        if (event.allDayKeyID) {
+            updateTasks.push(api.updateAttrViewCell_pro(
+                event.blockId,
+                event.rootid,
+                event.allDayKeyID,
+                event.itemID,
+                allDay,
+                'checkbox'
+            ));
+        }
+        await Promise.all(updateTasks);
+        removeUnscheduledEvent(event);
+        api.handleDidaListEvent(event.rootid, event.blockId, event.itemID);
+        return true;
+    } catch (error) {
+        console.error('安排事件时出错:', error);
+        sy.showMessage('安排事件失败，请稍后再试', 4000, 'error');
+        return false;
+    }
 }
 // ======================================================================
 
@@ -490,7 +596,7 @@ async function extractDataFromTable(data: any, avID: string, isZQ = false, type 
                 return {};
             }
         });
-        console.log("extractDataFromTable🛠️🛠️ result:::", result);
+        // console.log("extractDataFromTable🛠️🛠️ result:::", result);
         return result;
     } catch (error) {
         console.error('Error in extractDataFromTable:', error);
@@ -528,7 +634,8 @@ export async function filterViewValue(viewValue, filterKeys: string[] = []) {
 export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: any[]): Promise<CalendarEventItem[]> {
     const events: CalendarEventItem[] = [];
     const addedEventIds = new Set<string>();
-    console.log("viewData:::", viewData);
+    const unscheduledCollector: UnscheduledEvent[] = [];
+    // console.log("viewData:::", viewData);
     // 处理普通事件（界面展示与跳转使用块 id，数据库更新使用 itemID）
     for (const view of viewData) {
         for (const item of view.data) {
@@ -541,6 +648,28 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
 
                 // 检查是否设置了开始时间
                 const hasStartTime = item['开始时间']?.start;
+                if (!hasStartTime) {
+                    if (eventBlockId) {
+                        unscheduledCollector.push({
+                            blockId: eventBlockId,
+                            itemID: eventItemId || eventBlockId,
+                            rootid: view.from.rootid,
+                            title: item['事件']?.content || '',
+                            status: item['状态']?.content || '',
+                            priority: item['优先级']?.content || '',
+                            category: item['分类']?.content || '',
+                            tags: Array.isArray(item['标签']?.content) ? item['标签'].content : [],
+                            description: item['描述']?.content || '',
+                            timeKeyID: item['开始时间']?.keyID,
+                            allDayKeyID: item['全天']?.keyID,
+                            statusKeyID: item['状态']?.keyID,
+                            viewId: view.from.viewId,
+                            viewName: view.from.name,
+                            overdue: false,
+                        });
+                    }
+                    continue;
+                }
                 const startDate = hasStartTime
                     ? new Date(parseInt(item['开始时间'].start))
                     : new Date(new Date().setHours(8, 0, 0, 0));
@@ -611,6 +740,43 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                         Kend: endDate,
                     }
                 });
+
+                // 新增：将“已过期且未完成”的事件也加入待安排列表
+                // 判定逻辑：
+                // - 状态不是“完成”
+                // - 若有结束时间，则以结束时间判断是否过期；否则以开始时间判断
+                try {
+                    const statusVal = (item['状态']?.content || '').trim();
+                    // 将“完成”与“归档”都视作已完成，避免把归档项计入待安排
+                    const isDone = statusVal === '完成' || statusVal === '归档';
+                    if (!isDone && hasStartTime) {
+                        const now = Date.now();
+                        const endOrStart = (endDate ? endDate.getTime() : startDate.getTime());
+                        const isOverdue = endOrStart < now;
+                        if (isOverdue) {
+                            unscheduledCollector.push({
+                                blockId: eventBlockId,
+                                itemID: eventItemId || eventBlockId,
+                                rootid: view.from.rootid,
+                                title: item['事件']?.content || '',
+                                status: statusVal,
+                                priority: item['优先级']?.content || '',
+                                category: item['分类']?.content || '',
+                                tags: Array.isArray(item['标签']?.content) ? item['标签'].content : [],
+                                description: item['描述']?.content || '',
+                                timeKeyID: item['开始时间']?.keyID,
+                                allDayKeyID: item['全天']?.keyID,
+                                statusKeyID: item['状态']?.keyID,
+                                viewId: view.from.viewId,
+                                viewName: view.from.name,
+                                overdue: true,
+                            });
+                        }
+                    }
+                } catch (e) {
+                    // 安全兜底，不影响主流程
+                    console.warn('判定过期未完成事件时出错', e);
+                }
             }
         }
     }
@@ -639,6 +805,25 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                     //     (!endDate || (endDate.getHours() === 0 && endDate.getMinutes() === 0))) ||
                     // (endDate && startDate.getTime() === endDate.getTime());
 
+                    // 计算 duration：
+                    // - 非全天事件用“分钟”
+                    // - 全天事件用“天”（FullCalendar 要求）
+                    let durationMinutes: number;
+                    if (endDate) {
+                        // 有结束时间：按开始/结束差值计算分钟数
+                        durationMinutes = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60)));
+                    } else {
+                        // 无结束时间：使用“持续时间”字段（默认按小时）
+                        const durationHours = parseFloat(item['持续时间']?.content) || 1;
+                        durationMinutes = Math.max(1, Math.round(durationHours * 60));
+                    }
+                    // FullCalendar 的 rrule 事件 duration 需要传 DurationInput：
+                    // - 全天：{ days: n }
+                    // - 非全天：{ minutes: n }
+                    const durationObj = isAllDay
+                        ? { days: Math.max(1, Math.ceil(durationMinutes / (60 * 24))) }
+                        : { minutes: durationMinutes };
+
                     const rruleStr = item['重复规则']?.content
                         ? `DTSTART:${startDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z\n${item['重复规则'].content}`
                         : '';
@@ -654,11 +839,11 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
                         id: eventBlockId,
                         title: item['事件']?.content || '',
                         start: startDate,
-                        // end: endDate,
+                        // end: endDate, // 对于rrule事件，不设置end（那是系列结束时间）
                         timeZone: 'local',
                         allDay: isAllDay,
                         rrule: rruleStr,
-                        duration: item['持续时间']?.content || 1,
+                        duration: durationObj,
                         extendedProps: {
                             blockId: eventBlockId,
                             itemID: eventItemId,
@@ -689,7 +874,7 @@ export async function convertToFullCalendarEvents(viewData: any[], viewData_zq: 
             }
         }
     }
-
+    setUnscheduledEvents(unscheduledCollector);
     return events;
 }
 //查看事件
@@ -915,7 +1100,15 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         // 优先：时间、状态、全天（高优先级）
         primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, timeKeyID, itemID, dateStr, "date", undefined, 'high'));
         const selectdata: ISelectOption[] = [{ content: status }];
-        primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, itemID, selectdata, "select", undefined, 'high'));
+        // console.log("selectdata", selectdata);
+        // 2025/7/5新增默认添加优先级
+        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
+        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, itemID, selectdata, "select"));
+        // 设置自定义属性
+        api.setBlockAttrs(direct.directid, { 'custom-st-event': statusMap[status] });
+
+        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, checkboxKeyID, itemID, ismain, "checkbox"));
+        // 默认设置为非全天事件
         if (allDayKeyID) {
             primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, allDayKeyID, itemID, false, "checkbox", undefined, 'high'));
         }
@@ -1121,6 +1314,8 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             }
             if (status && statusKeyID && selectdata) {
                 updatePromises2.push(api.updateAttrViewCell_pro(id, to_db_id, statusKeyID, itemID, selectdata, "select"));
+                // 设置自定义属性
+                api.setBlockAttrs(id, { 'custom-st-event': statusMap[status] });
             }
             if (checkboxKeyID) {
                 updatePromises2.push(api.updateAttrViewCell_pro(id, to_db_id, checkboxKeyID, itemID, ismain, "checkbox"));
@@ -1867,6 +2062,12 @@ export function updataqqcalendar(info) {
                     <input type="datetime-local" id="qq-edit-end" class="b3-text-field" value="${formatDateForInput(info.event.end || new Date(info.event.start.getTime() + 60 * 60 * 1000))}">
                 </div>
                 <div class="form-item">
+                    <label>
+                        <input type="checkbox" id="qq-edit-allday" ${info.event.allDay ? 'checked' : ''}>
+                        全天
+                    </label>
+                </div>
+                <div class="form-item">
                     <label>描述</label>
                     <textarea id="qq-edit-desc" class="b3-text-field" rows="3">${info.event.extendedProps.description || ''}</textarea>
                 </div>
@@ -1886,7 +2087,8 @@ export function updataqqcalendar(info) {
         const start = new Date((document.getElementById('qq-edit-start') as HTMLInputElement).value);
         const end = new Date((document.getElementById('qq-edit-end') as HTMLInputElement).value);
         const description = (document.getElementById('qq-edit-desc') as HTMLTextAreaElement).value;
-        const allDay = (document.getElementById('qq-edit-allday') as HTMLInputElement).checked;
+        const allDayEl = document.getElementById('qq-edit-allday') as HTMLInputElement | null;
+        const allDay = allDayEl ? allDayEl.checked : !!info.event.allDay;
 
         if (!title) {
             sy.showMessage('请输入事件标题', -1, 'error');
@@ -1919,6 +2121,15 @@ export function updataqqcalendar(info) {
             sy.showMessage('更新事件失败', -1, 'error');
         }
     });
+    // 添加取消按钮事件
+    const cancelBtn = dialog.element.querySelector('#qq-edit-cancel');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dialog.destroy();
+        });
+    }
     // 添加删除按钮
     const footer = dialog.element.querySelector('.b3-dialog__action');
     if (footer) {

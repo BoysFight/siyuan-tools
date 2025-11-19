@@ -1,12 +1,10 @@
-import { useState, useEffect, useRef, ReactElement } from 'react'
-import React from 'react';
+import React, { ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	HTMLContainer,
 	Rectangle2d,
 	ShapeUtil,
 	SvgExportContext,
 	TLResizeInfo,
-	TLShape,
 	getDefaultColorTheme,
 	resizeBox,
 } from '@tldraw/tldraw'
@@ -16,10 +14,13 @@ import { ICardShape } from './card-shape-types'
 import { Protyle, showMessage } from 'siyuan';
 import * as api from '@/api/api';
 import { settingdata } from '@/index';
+import { enqueueProtyleLoad, ProtyleLoadHandle } from '../protyle-load-queue'
 
 let isCreatingBlock = false;
-let lastCreatedBlockId = null;
+// 仅用于并发创建控制，不再缓存最近创建的块ID
 let pendingCreationPromise = null;
+
+// 移除轻量预览相关工具，保持编辑态与非编辑态显示一致（均使用 Protyle 渲染）
 
 
 export class CardShapeUtil extends ShapeUtil<ICardShape> {
@@ -63,6 +64,7 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 			fontSize: 16, // 默认字体大小
 			isMain: false, // 是否为主卡片
 			refreshNonce: Date.now(), // 用于之后强制刷新
+			isCollapsed: false, // 默认不折叠
 			// version: 1, // 版本号
 		}
 	}
@@ -77,198 +79,299 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 	}
 	// [6]
 	component(shape: ICardShape) {
-		const bounds = this.editor.getShapeGeometry(shape).bounds
+		// const bounds = this.editor.getShapeGeometry(shape).bounds
 		const theme = getDefaultColorTheme({ isDarkMode: this.editor.user.getIsDarkMode() })
 		const isEditing = this.editor.getEditingShapeId() === shape.id;
 		const [isEditingState, setIsEditingState] = useState(isEditing);
-		
-		const protyleRef = useRef(null)
+		const [isInViewport, setIsInViewport] = useState(true);
+		const isViewportCullingEnabled = settingdata['tldraw-viewport-culling'] !== false;
+		const [collapsedText, setCollapsedText] = useState<string>('加载中...');
+		const isCollapsed = shape.props.isCollapsed || false;
 
-		
+
+		// 仅在编辑时创建 Protyle 实例
+		const protyleRef = useRef<Protyle | null>(null)
+		// Protyle 的承载元素（脱离 containerRef 创建，再 append 进去）
+		const protyleHostRef = useRef<HTMLDivElement | null>(null)
+		// 非编辑态下的静态预览节点（由 Protyle contentElement 克隆而来）
+		const staticPreviewRef = useRef<HTMLElement | null>(null)
+	// 防止重复销毁：为每个 Protyle 实例设置一个已销毁标记
+	const DESTROYED_MARK = '__st_destroyed__'
+	const safeDestroyProtyle = (pt: Protyle | null | undefined) => {
+		if (!pt) return
+		const anyPt = pt as any
+		if (anyPt[DESTROYED_MARK]) return
+		try { pt.destroy() } catch {}
+		anyPt[DESTROYED_MARK] = true
+	}
+		const visibilityTimerRef = useRef<number | null>(null)
+		const loadHandleRef = useRef<ProtyleLoadHandle | null>(null)
+
+		// 以世界坐标的预加载边距，规避 DOM 观察在缩放/平移变换下的不稳定
+		const PRELOAD_MARGIN_WORLD = 1600
+
+		const destroyRuntimeResources = useCallback(() => {
+			if (loadHandleRef.current) {
+				loadHandleRef.current.cancel()
+				loadHandleRef.current = null
+			}
+			if (staticPreviewRef.current?.parentElement) {
+				try {
+					staticPreviewRef.current.parentElement.removeChild(staticPreviewRef.current)
+				} catch {
+					// ignore
+				}
+			}
+			staticPreviewRef.current = null
+			if (protyleRef.current) {
+				safeDestroyProtyle(protyleRef.current)
+				protyleRef.current = null
+			}
+			if (protyleHostRef.current?.parentElement) {
+				try {
+					protyleHostRef.current.parentElement.removeChild(protyleHostRef.current)
+				} catch {
+					// ignore
+				}
+			}
+			protyleHostRef.current = null
+		}, [])
+
+
 		const containerRef = useRef<HTMLDivElement>(null)
 
-		
+
 		useEffect(() => {
 			setIsEditingState(isEditing);
 		}, [isEditing]);
 
+		// 折叠状态下获取块的 markdown 内容并截取前10个字
 		useEffect(() => {
-			if (protyleRef.current && protyleRef.current.protyle && protyleRef.current.protyle.wysiwyg) {
-				protyleRef.current.protyle.wysiwyg.element.style.fontSize = `${shape.props.fontSize || 16}px`;
-			} else if (containerRef.current) {
-				const protyleElement = containerRef.current.querySelector(".protyle-wysiwyg");
-				if (protyleElement) {
-					(protyleElement as HTMLElement).style.fontSize = `${shape.props.fontSize || 16}px`;
-				}
+			if (isCollapsed && shape.props.blockId) {
+				api.getBlockByID(shape.props.blockId).then((res) => {
+					if (res && res.content) {
+						// 移除 markdown 标记和链接，只保留纯文本
+						const plainText = res.content
+							.replace(/\[🔗\]\([^)]+\)/g, '') // 移除链接
+							.replace(/^#+\s+/gm, '') // 移除标题标记
+							.replace(/\{:[^}]+\}/g, '') // 移除属性
+							.trim();
+						const preview = plainText.slice(0, 10) + (plainText.length > 10 ? '...' : '');
+						setCollapsedText(preview || '空块');
+					} else {
+						setCollapsedText('空块');
+					}
+				}).catch(() => {
+					setCollapsedText('加载失败');
+				});
 			}
-		}, [shape.props.fontSize]);
+		}, [isCollapsed, shape.props.blockId]);
+
+		// 基于世界坐标的“预加载区”检测，避免 IntersectionObserver 在复杂场景下失效
+		const updateVisibilityManual = useCallback(() => {
+			if (!isViewportCullingEnabled) {
+				setIsInViewport(true)
+				return
+			}
+			const viewport = this.editor.getViewportPageBounds()
+			const shapeBounds = this.editor.getShapePageBounds(shape.id)
+			if (!viewport || !shapeBounds) return
+			const expanded = {
+				minX: viewport.minX - PRELOAD_MARGIN_WORLD,
+				minY: viewport.minY - PRELOAD_MARGIN_WORLD,
+				maxX: viewport.maxX + PRELOAD_MARGIN_WORLD,
+				maxY: viewport.maxY + PRELOAD_MARGIN_WORLD,
+			}
+			const intersects =
+				expanded.minX < shapeBounds.maxX &&
+				expanded.maxX > shapeBounds.minX &&
+				expanded.minY < shapeBounds.maxY &&
+				expanded.maxY > shapeBounds.minY
+			if (visibilityTimerRef.current !== null) {
+				clearTimeout(visibilityTimerRef.current)
+			}
+			visibilityTimerRef.current = window.setTimeout(() => {
+				visibilityTimerRef.current = null
+				setIsInViewport((prev) => (prev === intersects ? prev : intersects))
+			}, 100)
+		}, [isViewportCullingEnabled, shape.id])
 
 		useEffect(() => {
-			//检查块是否存在
-			const container = containerRef.current;
-			const blockId = container?.getAttribute('blockid');
-			// console.log('containerAAAAAA啊', container);
-			// console.log('id', shape.props.blockId, "/n shapeid", shape.id);
-			// console.log('blockId', blockId);
-			if (protyleRef.current) {
-				if (isEditingState) {
-					protyleRef.current.enable();
-					// console.log('进入编辑状态', protyleRef.current.protyle.wysiwyg);
-				} else {
-					protyleRef.current.disable();
-					// console.log('退出编辑状态', protyleRef.current.protyle.wysiwyg);
-				}
+			updateVisibilityManual()
+			const id = window.setInterval(updateVisibilityManual, 200)
+			return () => window.clearInterval(id)
+		}, [updateVisibilityManual])
+
+		// 移除轻量预览逻辑，统一使用 Protyle 渲染
+
+		// 字体大小变更时，如果处于编辑且存在 Protyle，则更新其样式
+		useEffect(() => {
+			if (protyleRef.current?.protyle?.wysiwyg?.element) {
+				protyleRef.current.protyle.wysiwyg.element.style.fontSize = `${shape.props.fontSize || 16}px`;
+			} else if (containerRef.current) {
+				const wys = containerRef.current.querySelector(".protyle-wysiwyg");
+				if (wys) (wys as HTMLElement).style.fontSize = `${shape.props.fontSize || 16}px`;
 			}
-			if (!shape.props.blockId) {
+		}, [shape.props.fontSize]);
+		// 非编辑态下做一次存在性检查，避免频繁 API 调用
+		useEffect(() => {
+			const container = containerRef.current;
+			const blockId = container?.getAttribute('blockid') || shape.props.blockId;
+			if (!shape.props.blockId && blockId) {
 				this.editor.updateShape({
 					id: shape.id,
 					type: shape.type,
-					props: {
-						...shape.props,
-						blockId: blockId,
-					},
+					props: { ...shape.props, blockId }
 				});
 			}
-			if (blockId) {
-				// console.log('检查块是否存在:', blockId);
-				// Add delay before checking if block exists to avoid unnecessary API calls
+			if (blockId && !isEditingState) {
 				if (shape.props.isNewlyCreated) {
 					this.editor.updateShape({
 						id: shape.id,
 						type: shape.type,
-						props: {
-							...shape.props,
-							isNewlyCreated: false,
-						},
+						props: { ...shape.props, isNewlyCreated: false }
 					});
 				} else {
-					const checkBlockExistence = setTimeout(() => {
+					const h = setTimeout(() => {
 						api.getBlockByID(blockId).then((res) => {
-							if (res) {
-								// console.log('块存在:', res);
-							} else {
+							if (!res) {
 								showMessage('块不存在,已被删除');
 								this.editor.deleteShape(shape.id);
 							}
 						});
 					}, 4000);
-					return () => clearTimeout(checkBlockExistence);
+					return () => clearTimeout(h);
 				}
 			}
-		}, [isEditingState]);
-		// eslint-disable-next-line react-hooks/rules-of-hooks
+		}, [isEditingState, shape.props.blockId]);
+		// 仅在编辑时保留 Protyle 实例；非编辑时克隆 contentElement 作为静态预览并销毁实例
 		useEffect(() => {
-			// 确保容器和SiYuan API都已加载
-			if (containerRef.current && window.siyuan && window.siyuan.ws && window.siyuan.ws.app) {
-				// 如果已有Protyle实例，先清理
-				if (protyleRef.current) {
-					// 如果Protyle有销毁方法，调用它
-					if (protyleRef.current.destroy) {
-						protyleRef.current.destroy();
-						// console.log('bbbbbbbbbb', protyleRef.current.protyle.wysiwyg);
-					}
-					protyleRef.current = null;
+			// 折叠状态下不渲染 Protyle
+			if (isCollapsed && !isEditingState) {
+				destroyRuntimeResources();
+				return;
+			}
+			
+			const shouldRender = !isViewportCullingEnabled || isEditingState || isInViewport;
+			if (!shouldRender) {
+				destroyRuntimeResources();
+				return;
+			}
+
+			if (!containerRef.current || !window.siyuan?.ws?.app) return;
+			const renderMode = (settingdata["card-render-mode"] || "static-dom") as "static-dom" | "live-protyle";
+
+			// 等待 Protyle 完成首次内容渲染（尽量接近编辑态样式）
+			const waitForProtyleRendered = async (pt: Protyle, timeout = 800) => {
+				const ce = pt.protyle?.contentElement as HTMLElement | undefined;
+				if (!ce) return;
+				if (ce.childElementCount > 0) {
+					await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+					return;
 				}
-
-				const createBlockIfNeeded = async () => {
-					let blockId = null;
-					// 如果元素上没有找到，则使用shape.props中的blockId
-					if (containerRef.current) {
-						blockId = containerRef.current.getAttribute('blockid');
-						// console.log('获取到的blockId', blockId);
-					}
-
-					// console.log('shape', shape.props.blockId);
-					if (!blockId) {
-						blockId = shape.props.blockId;
-					}
-
-					if (!blockId) {
-						const editorElement = containerRef.current?.closest('.tldraw__editor');
-						const tldrawId = editorElement?.getAttribute('data-tldraw-id');
-						const title = editorElement?.getAttribute('data-tldraw-title');
-						console.log('当前TLdraw实例ID:', tldrawId);
-
-						if (!settingdata["tl-draw-create-note-id"] && !tldrawId) {
-							showMessage('配置不完整,请检查设置');
-							return;
+				await new Promise<void>((resolve) => {
+					let done = false;
+					const finish = () => {
+						if (done) return; done = true; resolve();
+					};
+					const obs = new MutationObserver(() => {
+						if (ce.childElementCount > 0) {
+							obs.disconnect();
+							requestAnimationFrame(() => requestAnimationFrame(finish));
 						}
+					});
+					obs.observe(ce, { childList: true, subtree: true });
+					setTimeout(() => { try { obs.disconnect(); } catch {} finish(); }, timeout);
+				});
+			};
 
-						// 检查是否有其他操作正在创建块
-						if (isCreatingBlock) {
-							// 如果有，等待那个操作完成并使用它创建的块ID
-							try {
-								if (pendingCreationPromise) {
-									blockId = await pendingCreationPromise;
-									if (blockId) {
-										this.editor.updateShape({
-											id: shape.id,
-											type: shape.type,
-											props: {
-												...shape.props,
-												blockId: blockId,
-											},
-										});
-									}
-								}
-							} catch (err) {
-								console.error("等待块创建失败:", err);
-							}
-						} else {
-							// 设置锁，标记正在创建块
-							isCreatingBlock = true;
-
-							try {
-								// 创建一个Promise，其他实例可以等待它
-								pendingCreationPromise = (async () => {
-									const daynote_id = (await api.createDailyNote(window.siyuan.ws.app.appId, settingdata["tl-draw-create-note-id"])).id
-									if (!daynote_id) {
-										showMessage('未找到日记块');
-										return null;
-									}
-									const idid = await api.generateSiyuanID() as string;
-									const timestamp = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-									const link = `siyuan://plugins/siyuan-steve-tools/?rootid=${tldrawId}&blockid=${idid}&title=${title}`;
-									const redata = await api.appendBlock("markdown", `##### [${timestamp}](${link})[🔗](${link})
-{: id="${idid}" custom-st-tldraw="1" }`, tldrawId || daynote_id)
-
-									const newBlockId = redata[0].doOperations[0].id;
-									lastCreatedBlockId = newBlockId;
-									return newBlockId;
-								})();
-
-								// 等待块创建完成
-								blockId = await pendingCreationPromise;
-
-								// 更新当前shape
-								this.editor.updateShape({
-									id: shape.id,
-									type: shape.type,
-									props: {
-										...shape.props,
-										blockId: blockId,
-									},
-								});
-							} catch (error) {
-								console.error("创建块失败:", error);
-							} finally {
-								// 释放锁
-								isCreatingBlock = false;
-								// 一段时间后清除缓存的Promise和ID
-								setTimeout(() => {
-									pendingCreationPromise = null;
-								}, 5000);
-							}
-						}
-					}
-
-					// 如果仍然没有blockId，显示错误
-					if (!blockId) {
-						showMessage('未找到块');
+			const mountProtyle = async (priority: number) => {
+				if (cancelled) return;
+				let blockId: string | null = containerRef.current?.getAttribute('blockid') || shape.props.blockId || null;
+				if (!blockId) {
+					const editorElement = containerRef.current?.closest('.tldraw__editor');
+					const tldrawId = editorElement?.getAttribute('data-tldraw-id');
+					const title = editorElement?.getAttribute('data-tldraw-title');
+					if (!settingdata["tl-draw-create-note-id"] && !tldrawId) {
+						showMessage('配置不完整,请检查设置');
 						return;
 					}
-					const pt = new Protyle(window.siyuan.ws.app, containerRef.current, {
-						blockId: blockId,
+					if (isCreatingBlock && pendingCreationPromise) {
+						try {
+							blockId = await pendingCreationPromise;
+						} catch (e) {
+							console.error('等待块创建失败', e);
+						}
+						if (cancelled) return;
+					} else if (!blockId) {
+						isCreatingBlock = true;
+						try {
+							pendingCreationPromise = (async () => {
+								const idid = await api.generateSiyuanID() as string;
+								const timestamp = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+								const link = `https://plugins/siyuan-steve-tools/?rootid=${tldrawId}&blockid=${idid}&title=${title}`;
+								const content =
+									'###### ' + timestamp + '[🔗](' + link + ')' +
+									'\n' +
+									'{: id="' + idid + '" custom-st-tldraw="1" }' +
+									'\n\n' +
+									'{: custom-st-tldraw-none="1" }' +
+									'\n';
+								const redata = await api.appendBlock("markdown", content, tldrawId!);
+								const newBlockId = redata[0].doOperations[0].id;
+								return newBlockId;
+							})();
+							blockId = await pendingCreationPromise;
+							if (cancelled) return;
+						} catch (err) {
+							console.error('创建块失败', err);
+						} finally {
+							isCreatingBlock = false;
+							setTimeout(() => (pendingCreationPromise = null), 5000);
+						}
+					}
+				}
+
+				if (!blockId) {
+					showMessage('未找到块');
+					return;
+				}
+
+				if (cancelled) return;
+				this.editor.updateShape({ id: shape.id, type: shape.type, props: { ...shape.props, blockId } });
+				containerRef.current?.setAttribute('blockid', blockId);
+				if (cancelled) return;
+
+				loadHandleRef.current?.cancel();
+				const handle = enqueueProtyleLoad(shape.id, priority, async (signal) => {
+					if (cancelled || signal.aborted) return;
+					const currentContainer = containerRef.current;
+					if (!currentContainer) return;
+					if (staticPreviewRef.current?.parentElement === currentContainer) {
+						try {
+							currentContainer.removeChild(staticPreviewRef.current);
+						} catch {
+							// ignore
+						}
+						staticPreviewRef.current = null;
+					}
+					if (protyleHostRef.current && protyleHostRef.current.parentElement === currentContainer) {
+						try {
+							protyleHostRef.current.parentElement.removeChild(protyleHostRef.current);
+						} catch {
+							// ignore
+						}
+					}
+					if (signal.aborted || cancelled) return;
+					const host = document.createElement('div');
+					host.style.width = '100%';
+					host.style.height = '100%';
+					host.style.overflow = 'hidden';
+					protyleHostRef.current = host;
+					let resolveReady: (() => void) | null = null;
+					const readyPromise = new Promise<void>((resolve) => (resolveReady = resolve));
+					const protyleInstance = new Protyle(window.siyuan.ws.app, host, {
+						blockId,
 						rootId: blockId,
 						defId: blockId,
 						render: {
@@ -276,43 +379,140 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 							gutter: true,
 							title: shape.props.isMain,
 							breadcrumbDocName: shape.props.isMain,
-							// scroll:false,
 						},
-						// action: ["cb-get-focus"],
+						action: ["cb-get-all", "cb-get-focus"],
 						mode: "wysiwyg",
-						// typewriterMode: true,
 						after: (protyle: Protyle) => {
-							// console.log('after');
 							protyle.protyle.wysiwyg.preventKeyup = true;
-							// protyle.resize();
-							// console.log('after', protyle.wysiwyg);
-						}
+							resolveReady && resolveReady();
+						},
+						handleEmptyContent: () => {
+							showMessage('块已被删除');
+						},
 					});
-					// pt.focusBlock(blockId);
-
-					protyleRef.current = pt;
-					if (containerRef.current) {
-						containerRef.current.setAttribute('blockid', blockId);
+					if (signal.aborted || cancelled) {
+						safeDestroyProtyle(protyleInstance)
+						return;
 					}
-					// 应用字体大小设置
-					if (pt.protyle && pt.protyle.wysiwyg && pt.protyle.wysiwyg.element) {
-						pt.protyle.wysiwyg.element.style.fontSize = `${shape.props.fontSize || 16}px`;
+					protyleRef.current = protyleInstance;
+					currentContainer.appendChild(host);
+					if (protyleInstance.protyle?.wysiwyg?.element) {
+						protyleInstance.protyle.wysiwyg.element.style.fontSize = `${shape.props.fontSize || 16}px`;
 					}
-					// console.log('bbbQQQQQbbb', containerRef);
-				};
-				// 创建新的Protyle实例
-				createBlockIfNeeded();
-
-			}
-
-			// 组件卸载时清理
-			return () => {
-				if (protyleRef.current && protyleRef.current.destroy) {
-					protyleRef.current.destroy();
-					protyleRef.current = null;
+					await readyPromise.catch(() => {});
+					if (signal.aborted || cancelled) {
+						safeDestroyProtyle(protyleInstance)
+						if (protyleHostRef.current === host && host.parentElement) {
+							host.parentElement.removeChild(host);
+						}
+						if (protyleRef.current === protyleInstance) {
+							protyleRef.current = null;
+						}
+					}
+				});
+				loadHandleRef.current = handle;
+				try {
+					await handle.finished;
+				} catch (err) {
+					console.error('加载 Protyle 失败', err);
+				} finally {
+					if (loadHandleRef.current === handle) {
+						loadHandleRef.current = null;
+					}
 				}
 			};
-		}, [shape.id]);
+
+			const useStaticPreviewFromProtyle = async () => {
+				if (!protyleRef.current || cancelled) return;
+				const ce = protyleRef.current.protyle?.contentElement as HTMLElement | undefined;
+				if (!ce) return;
+				// 保险起见，再等待一次渲染完成
+				await waitForProtyleRendered(protyleRef.current);
+	 			if (cancelled) return;
+				// 克隆只读 DOM
+				if (staticPreviewRef.current?.parentElement === containerRef.current) {
+					containerRef.current.removeChild(staticPreviewRef.current);
+				}
+				const clone = ce.cloneNode(true) as HTMLElement;
+				clone.style.width = '100%';
+				clone.style.height = '100%';
+				clone.style.overflow = 'auto';
+				clone.style.fontSize = `${shape.props.fontSize || 16}px`;
+				// 清理 Protyle host
+				if (protyleHostRef.current?.parentElement) {
+					protyleHostRef.current.parentElement.removeChild(protyleHostRef.current);
+				}
+				// 销毁 Protyle 实例
+				try { safeDestroyProtyle(protyleRef.current); } catch {}
+				protyleRef.current = null;
+				protyleHostRef.current = null;
+				// 挂载克隆预览
+				if (cancelled) return;
+				staticPreviewRef.current = clone;
+				if (containerRef.current) {
+					containerRef.current.appendChild(clone);
+				}
+			};
+
+			let cancelled = false;
+
+			(async () => {
+				if (isEditingState) {
+					// 进入编辑：移除静态预览，创建并启用 Protyle
+					if (staticPreviewRef.current?.parentElement === containerRef.current) {
+						containerRef.current.removeChild(staticPreviewRef.current);
+					}
+					staticPreviewRef.current = null;
+					if (!protyleRef.current) {
+						await mountProtyle(0);
+						if (cancelled) return;
+					}
+					if (protyleHostRef.current && containerRef.current && protyleHostRef.current.parentElement !== containerRef.current) {
+						containerRef.current.appendChild(protyleHostRef.current);
+					}
+					try { protyleRef.current?.enable(); } catch {}
+				} else {
+					// 非编辑
+					if (renderMode === 'static-dom') {
+						// 若已有 Protyle，用其生成静态预览后销毁实例；若没有且有 blockId，则临时创建->克隆->销毁
+						if (protyleRef.current) {
+							await useStaticPreviewFromProtyle();
+							if (cancelled) return;
+						} else {
+							const id = containerRef.current?.getAttribute('blockid') || shape.props.blockId;
+							if (id) {
+								await mountProtyle(2);
+								if (cancelled) return;
+								if (protyleRef.current) await waitForProtyleRendered(protyleRef.current);
+								await useStaticPreviewFromProtyle();
+								if (cancelled) return;
+							}
+						}
+					} else {
+						// live-protyle：保留实例但禁用交互，并尝试刷新内容
+						if (!protyleRef.current) {
+							await mountProtyle(1);
+							if (cancelled) return;
+						}
+						if (staticPreviewRef.current?.parentElement === containerRef.current) {
+							containerRef.current.removeChild(staticPreviewRef.current);
+						}
+						staticPreviewRef.current = null;
+						if (protyleHostRef.current && containerRef.current && protyleHostRef.current.parentElement !== containerRef.current) {
+							containerRef.current.appendChild(protyleHostRef.current);
+						}
+						try { protyleRef.current?.disable(); } catch {}
+						try { protyleRef.current?.reload(false); } catch {}
+					}
+				}
+			})()
+
+			// 组件卸载清理
+			return () => {
+				cancelled = true;
+				destroyRuntimeResources();
+			};
+		}, [destroyRuntimeResources, isEditingState, isInViewport, isViewportCullingEnabled, shape.id, shape.props.blockId, shape.props.refreshNonce, isCollapsed]);
 		// 处理双击事件进入编辑模式
 		const handleDoubleClick = (e: React.MouseEvent) => {
 			if (!isEditingState) {
@@ -367,7 +567,25 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 						padding: '0px', // 为内容添加最小边距
 						// borderRadius: 'inherit', // 继承父元素的圆角
 					}}
-				></div>
+				>
+					{/* 折叠状态下显示预览文本，否则渲染 Protyle */}
+					{isCollapsed && !isEditingState ? (
+						<div style={{
+							width: '100%',
+							height: '100%',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							fontSize: `${Math.min(shape.props.w / 6, shape.props.h / 2)}px`,
+							padding: '8px',
+							wordBreak: 'break-all',
+							color: theme[shape.props.color].solid,
+							textAlign: 'center',
+						}}>
+							{collapsedText}
+						</div>
+					) : null}
+				</div>
 			</HTMLContainer >
 		)
 	}
@@ -382,37 +600,189 @@ export class CardShapeUtil extends ShapeUtil<ICardShape> {
 		return resizeBox(shape, info)
 	}
 
-	override toSvg(shape: ICardShape, ctx: SvgExportContext): ReactElement | null {
-		// 获取当前主题颜色（考虑暗黑模式）
-		const theme = getDefaultColorTheme({ isDarkMode: ctx.isDarkMode });
-		// 获取卡片的背景色
-		const backgroundColor = theme[shape.props.color].semi;
-		// 获取卡片的边框/文字颜色
-		const textColor = theme[shape.props.color].solid;
+		override toSvg(shape: ICardShape, ctx: SvgExportContext): ReactElement | null {
+		const theme = getDefaultColorTheme({ isDarkMode: ctx.isDarkMode })
+		const { w, h, color, fontSize = 16, blockId } = shape.props
+		const border = -10
+		const radius = 10
+		const strokeColor = theme[color].solid
+		const fillColor = theme[color].semi
+		let serialized = ''
 
-		// 返回一个 SVG 组合，包含背景矩形和提示文字
+		const serializeContent = () => {
+			if (typeof document === 'undefined') return ''
+			const host = document.getElementById(shape.id)
+			if (!host) return ''
+			const content = host.querySelector('[blockid]') as HTMLElement | null
+			if (!content) return ''
+			const clone = content.cloneNode(true) as HTMLElement
+			const binaryToBase64 = (binary: string) => {
+				let base64 = ''
+				const chunkSize = 0x6000 // divisible by 3 to keep padding predictable
+				for (let i = 0; i < binary.length; i += chunkSize) {
+					const slice = binary.slice(i, i + chunkSize)
+					let normalized = ''
+					for (let j = 0; j < slice.length; j++) {
+						normalized += String.fromCharCode(slice.charCodeAt(j) & 0xff)
+					}
+					base64 += btoa(normalized)
+				}
+				return base64
+			}
+			const assetToDataUrl = (rawSrc: string | null) => {
+				if (!rawSrc) return ''
+				const trimmed = rawSrc.trim()
+				if (!trimmed || /^data:/i.test(trimmed) || /^https?:/i.test(trimmed) || trimmed.startsWith('//')) return trimmed
+				let logicalPath = trimmed.replace(/^\.\//, '')
+				if (logicalPath.startsWith('/')) logicalPath = logicalPath.slice(1)
+				let kernelPath = ''
+				if (logicalPath.startsWith('assets/')) kernelPath = `/data/${logicalPath}`
+				else if (logicalPath.startsWith('data/')) kernelPath = `/${logicalPath}`
+				else if (logicalPath.startsWith('/data/')) kernelPath = logicalPath
+				else return trimmed
+				try {
+					const xhr = new XMLHttpRequest()
+					xhr.open('POST', '/api/file/getFile', false)
+					xhr.overrideMimeType('text/plain; charset=x-user-defined')
+					xhr.setRequestHeader('Content-Type', 'application/json')
+					xhr.send(JSON.stringify({ path: kernelPath }))
+					if (xhr.status >= 200 && xhr.status < 300 && typeof xhr.responseText === 'string') {
+						const base64 = binaryToBase64(xhr.responseText)
+						const ext = (logicalPath.split('.').pop() || 'png').toLowerCase()
+						const mimeMap: Record<string, string> = {
+							png: 'image/png',
+							jpg: 'image/jpeg',
+							jpeg: 'image/jpeg',
+							gif: 'image/gif',
+							webp: 'image/webp',
+							svg: 'image/svg+xml',
+							bmp: 'image/bmp',
+							ico: 'image/x-icon',
+							avif: 'image/avif'
+						}
+						const mime = mimeMap[ext] || 'image/png'
+						return `data:${mime};base64,${base64}`
+					}
+				} catch (err) {
+					console.warn('Embedding asset failed', err)
+				}
+				return trimmed
+			}
+
+			const inlineComputedStyles = (source: Element, target: Element) => {
+				const computed = window.getComputedStyle(source)
+				const styleText = Array.from(computed)
+					.map((prop) => `${prop}:${computed.getPropertyValue(prop)};`)
+					.join('')
+				const existing = target.getAttribute('style') || ''
+				target.setAttribute('style', `${styleText}${existing}`)
+				const sourceChildren = Array.from(source.children)
+				const targetChildren = Array.from(target.children)
+				for (let i = 0; i < sourceChildren.length; i++) {
+					const srcChild = sourceChildren[i]
+					const tgtChild = targetChildren[i]
+					if (srcChild && tgtChild) {
+						inlineComputedStyles(srcChild, tgtChild)
+					}
+				}
+			}
+
+			inlineComputedStyles(content, clone)
+			clone.querySelectorAll('[contenteditable]').forEach((el) => el.removeAttribute('contenteditable'))
+			clone.querySelectorAll('[data-node-id]').forEach((el) => el.removeAttribute('data-node-id'))
+			clone.querySelectorAll('[data-node-index]').forEach((el) => el.removeAttribute('data-node-index'))
+			clone.querySelectorAll('[updated]').forEach((el) => el.removeAttribute('updated'))
+			clone.querySelectorAll('[data-realwidth]').forEach((el) => el.removeAttribute('data-realwidth'))
+			clone.querySelectorAll('[data-readonly]').forEach((el) => el.removeAttribute('data-readonly'))
+			clone.querySelectorAll('*').forEach((node) => {
+				if (node instanceof HTMLElement) {
+					node.style.setProperty('scrollbar-width', 'none', 'important')
+					node.style.setProperty('ms-overflow-style', 'none', 'important')
+					node.style.setProperty('overscroll-behavior', 'contain')
+				}
+			})
+			clone.querySelectorAll('img').forEach((img) => {
+				const embedded = assetToDataUrl(img.getAttribute('src'))
+				if (embedded) {
+					img.setAttribute('src', embedded)
+					img.removeAttribute('crossorigin')
+				}
+				const srcset = img.getAttribute('srcset')
+				if (srcset) {
+					const resolvedSet = srcset
+						.split(',')
+						.map((entry) => {
+							const [url, descriptor] = entry.trim().split(/\s+/, 2)
+							const resolved = assetToDataUrl(url)
+							return resolved ? (descriptor ? `${resolved} ${descriptor}` : resolved) : ''
+						})
+						.filter(Boolean)
+						.join(', ')
+					if (resolvedSet) img.setAttribute('srcset', resolvedSet)
+					else img.removeAttribute('srcset')
+				}
+			})
+			clone.querySelectorAll('source').forEach((sourceEl) => {
+				const src = sourceEl.getAttribute('src')
+				const resolved = assetToDataUrl(src)
+				if (resolved) {
+					sourceEl.setAttribute('src', resolved)
+					sourceEl.removeAttribute('crossorigin')
+				}
+				const srcset = sourceEl.getAttribute('srcset')
+				if (srcset) {
+					const resolvedSet = srcset
+						.split(',')
+						.map((entry) => {
+							const [url, descriptor] = entry.trim().split(/\s+/, 2)
+							const result = assetToDataUrl(url)
+							return result ? (descriptor ? `${result} ${descriptor}` : result) : ''
+						})
+						.filter(Boolean)
+						.join(', ')
+					if (resolvedSet) sourceEl.setAttribute('srcset', resolvedSet)
+					else sourceEl.removeAttribute('srcset')
+				}
+			})
+			clone.style.width = `${w - border * 2}px`
+			clone.style.height = `${h - border * 2}px`
+			clone.style.pointerEvents = 'none'
+			clone.style.overflow = 'hidden'
+			clone.style.fontSize = `${fontSize}px`
+			clone.style.boxSizing = 'border-box'
+			return clone.outerHTML
+		}
+
+		serialized = serializeContent()
+		const hideScrollbarStyle = serialized
+			? '<style xmlns="http://www.w3.org/1999/xhtml">*::-webkit-scrollbar{width:0!important;height:0!important;display:none!important;}*::-webkit-scrollbar-thumb{display:none!important;}*{scrollbar-width:none!important;}</style>'
+			: ''
+
 		return (
 			<g>
-				<rect
-					width={shape.props.w}
-					height={shape.props.h}
-					fill={backgroundColor}
-					stroke={textColor} // 使用文字颜色作为边框色
-					strokeWidth={1}
-				/>
-				<text
-					x={shape.props.w / 2} // 水平居中
-					y={shape.props.h / 2} // 垂直居中
-					textAnchor="middle" // 水平对齐方式
-					dominantBaseline="middle" // 垂直对齐方式
-					fill={textColor} // 文字颜色
-					fontSize={Math.min(shape.props.w / 10, shape.props.h / 5, 16)} // 动态调整字体大小，最大16
-					fontFamily="sans-serif"
-				>
-					要完整内容请自行截图
-				</text>
+				<rect width={w} height={h} fill={fillColor} stroke={strokeColor} strokeWidth={border} rx={radius} ry={radius} />
+				{serialized ? (
+					<foreignObject x={border} y={border} width={Math.max(w - border * 2, 0)} height={Math.max(h - border * 2, 0)}>
+						<div
+							xmlns="http://www.w3.org/1999/xhtml"
+							style={{ width: '100%', height: '100%', overflow: 'hidden', fontSize: `${fontSize}px` }}
+							dangerouslySetInnerHTML={{ __html: `${hideScrollbarStyle}${serialized}` }}
+						/>
+					</foreignObject>
+				) : (
+					<text
+						x={w / 2}
+						y={h / 2}
+						fill={strokeColor}
+						fontSize={fontSize * 0.9}
+						dominantBaseline="middle"
+						textAnchor="middle"
+					>
+						{blockId ? `Block ${blockId.slice(-6)}` : 'Card'}
+					</text>
+				)}
 			</g>
-		);
+		)
 	}
 
 

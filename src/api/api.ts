@@ -6,7 +6,7 @@
  * API 文档见 [API_zh_CN.md](https://github.com/siyuan-note/siyuan/blob/master/API_zh_CN.md)
  */
 
-import { fetchPost, fetchSyncPost, IWebSocketData, showMessage } from "siyuan";
+import { fetchPost, fetchSyncPost, IOperation, IWebSocketData, Protyle, showMessage } from "siyuan";
 import { ISelectOption } from "@/calendar/interface";
 import { settingdata } from "..";
 import { AVManager } from "./db_pro";
@@ -374,15 +374,15 @@ export async function renderAttributeView(avid: BlockId, viewID?: string) {
         data = {
             id: avid, // avID,
             // viewID: '20241003141312-30yk3cr',//测试可以不用这个参数 //TODO：多视图的情况下需要
-            pageSize:-1,
-            page:1
+            pageSize: 99999,
+            page: 1
         }
     } else {
         data = {
             id: avid, // avID,
             viewID: viewID,
-            pageSize:-1,
-            page:1
+            pageSize: 99999,
+            page: 1
         }
     }
 
@@ -850,6 +850,26 @@ export async function updatemainkey(params: UpdateMainKeyParams): Promise<any> {
     });
 }
 
+export async function updateMainBlockName(keyID: string, avID: string, name: string): Promise<any> {
+    // 构建要执行的操作（根据用户提供的请求体）
+    const queuedDoOperations: IOperation[] = [
+        {
+            action: "updateAttrViewCol",
+            id: keyID,
+            avID: avID,
+            name: name,
+            type: "block"
+        }
+    ];
+
+    try {
+        // 不要修改这一行调用
+        Protyle.prototype.transaction(queuedDoOperations, []);
+    } catch (error) {
+        console.error("updateMainBlockName transaction failed:", error);
+        throw error;
+    }
+}
 
 
 export async function updateAttrViewCell_pro(
@@ -885,7 +905,7 @@ export async function updateAttrViewCell_pro(
             reject
         });
 
-        console.log(`📝 [队列] 添加单元格更新请求，队列当前长度: ${cellUpdateQueue.length}, avID: ${avID}`);
+        // console.log(`📝 [队列] 添加单元格更新请求，队列当前长度: ${cellUpdateQueue.length}, avID: ${avID}`);
 
         // 记录队列开始时间
         if (!cellUpdateQueueStartTime) {
@@ -922,13 +942,13 @@ export async function updateAttrViewCell_pro(
 // 处理队列函数 - 使用批量API优化
 async function processQueue() {
     if (isProcessingQueue || cellUpdateQueue.length === 0) {
-        console.log(`⏸️ [队列处理] 跳过处理 - 正在处理: ${isProcessingQueue}, 队列长度: ${cellUpdateQueue.length}`);
+        // console.log(`⏸️ [队列处理] 跳过处理 - 正在处理: ${isProcessingQueue}, 队列长度: ${cellUpdateQueue.length}`);
         return;
     }
 
     isProcessingQueue = true;
     const totalItems = cellUpdateQueue.length;
-    console.log(`🚀 [队列处理] 开始处理单元格更新队列，共 ${totalItems} 个项目`);
+    // console.log(`🚀 [队列处理] 开始处理单元格更新队列，共 ${totalItems} 个项目`);
 
     // 按 avID 分组处理
     const groupedUpdates = new Map<string, Array<typeof cellUpdateQueue[0]>>();
@@ -964,12 +984,12 @@ async function processQueue() {
         groupedUpdates.get(update.avID)!.push(update);
     }
 
-    console.log(`📊 [队列处理] 分组结果: ${groupedUpdates.size} 个avID，总共 ${allUpdates.length} 个更新`);
+    // console.log(`📊 [队列处理] 分组结果: ${groupedUpdates.size} 个avID，总共 ${allUpdates.length} 个更新`);
 
     // 按 avID 分组批量处理
     for (const [avID, updates] of groupedUpdates.entries()) {
         try {
-            console.log(`🔄 [批量更新单元格] 开始处理 ${updates.length} 个单元格更新，avID: ${avID}`);
+            // console.log(`🔄 [批量更新单元格] 开始处理 ${updates.length} 个单元格更新，avID: ${avID}`);
 
             // 预处理所有值并获取键信息
             const processedUpdates = await Promise.all(
@@ -1004,23 +1024,23 @@ async function processQueue() {
 
             if (batchUpdates.length > 0) {
                 // 使用批量API更新单元格
-                console.log(`🔄 [批量更新单元格] 发送批量更新请求，avID: ${avID}`, batchUpdates);
+                // console.log(`🔄 [批量更新单元格] 发送批量更新请求，avID: ${avID}`, batchUpdates);
                 const result = await avManager.batchUpdateCells(avID, batchUpdates);
 
                 // 成功后解析所有Promise
                 updates.forEach(update => update.resolve(result));
 
-                console.log(`✅ [批量更新单元格] 成功更新 ${batchUpdates.length} 个单元格，avID: ${avID}`);
+                // console.log(`✅ [批量更新单元格] 成功更新 ${batchUpdates.length} 个单元格，avID: ${avID}`);
                 // 批量更新完成后的后续处理
                 await handlePostBatchUpdateActions(avID);
             } else {
                 // 如果没有有效更新，拒绝所有Promise
                 updates.forEach(update => update.reject(new Error('Invalid keyName for update')));
-                console.warn(`⚠️  [批量更新单元格] 没有有效的键名，avID: ${avID}`);
+                // console.warn(`⚠️  [批量更新单元格] 没有有效的键名，avID: ${avID}`);
             }
 
         } catch (error) {
-            console.error(`❌ [批量更新单元格] 更新失败，avID ${avID}:`, error);
+            // console.error(`❌ [批量更新单元格] 更新失败，avID ${avID}:`, error);
             // 错误时拒绝所有Promise
             updates.forEach(update => update.reject(error));
         }
@@ -1028,7 +1048,7 @@ async function processQueue() {
         // 每个avID处理完后添加延迟
         if (groupedUpdates.size > 1) {
             const batchDelay = getBatchDelay();
-            console.log(`⏱️ [批量处理] avID ${avID} 处理完成，等待 ${batchDelay}ms 后处理下一个avID...`);
+            // console.log(`⏱️ [批量处理] avID ${avID} 处理完成，等待 ${batchDelay}ms 后处理下一个avID...`);
             await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
     }
@@ -1065,7 +1085,7 @@ async function handlePostBatchUpdateActions(avID: string) {
 async function refreshAttributeView(avID: string) {
     try {
         refreshKanban();
-        console.log(`🔄 [视图刷新] 成功刷新视图，avID: ${avID}`);
+        // console.log(`🔄 [视图刷新] 成功刷新视图，avID: ${avID}`);
     } catch (error) {
         console.warn(`⚠️ [视图刷新] 刷新视图失败，avID: ${avID}`, error);
     }
@@ -1354,10 +1374,11 @@ export async function addAttributeViewKey(
     keyType: string = 'text',
     previousKeyName: string = ''
 ): Promise<void> {
-    if (keyType == 'block') {
-        showMessage('主键键不支持添加，请自行修改主键名称为：事件', -1, 'error');
-        return;
-    }
+    // if (keyType == 'block') {
+    //     showMessage('主键键不支持添加，请自行修改主键名称为：事件', -1, 'error');
+        
+    //     return;
+    // }
     return await avManager.addAttributeViewKey(avID, {
         keyName,
         keyType: keyType as any,
