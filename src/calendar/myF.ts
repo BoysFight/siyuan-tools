@@ -1101,17 +1101,13 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, timeKeyID, itemID, dateStr, "date", undefined, 'high'));
         const selectdata: ISelectOption[] = [{ content: status }];
         // console.log("selectdata", selectdata);
-        // 2025/7/5新增默认添加优先级
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, itemID, selectdata, "select"));
-        // 设置自定义属性
-        api.setBlockAttrs(direct.directid, { 'custom-st-event': statusMap[status] });
-
-        updatePromises.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, checkboxKeyID, itemID, ismain, "checkbox"));
+        primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, statusKeyID, itemID, selectdata, "select", undefined, 'high'));
         // 默认设置为非全天事件
         if (allDayKeyID) {
             primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, allDayKeyID, itemID, false, "checkbox", undefined, 'high'));
         }
+        // 设置自定义属性
+        api.setBlockAttrs(direct.directid, { 'custom-st-event': statusMap[status] });
 
         // 后台：优先级、主事件标记、父子关系、项目关系
         secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
