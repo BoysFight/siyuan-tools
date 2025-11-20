@@ -64,24 +64,27 @@ export class M_sync {
                         const reason = `当前端口 ${currentPort} 不是主窗口(6806或16806)且不是Windows桌面客户端`;
                         console.log(`[同步跳过] ${reason}`);
                         showMessage(`同步操作已跳过：${reason}`, 3000);
-                        return;
-                    }
-                    // 已通过前面的条件检查，现在可以执行同步操作
-                    console.log('[同步执行] 当前是主窗口或桌面客户端，开始执行同步操作');
+                    } else {
+                        // 已通过前面的条件检查，现在可以执行同步操作
+                        console.log('[同步执行] 当前是主窗口或桌面客户端，开始执行同步操作');
 
-                    // 处理滴答清单同步
-                    if (this.didaSyncInstance["mydidaSyncEnabled"] &&
-                        this.settingdata["docker-sync-auto-trigger-dida"]) {
-                            setTimeout(async () => {
-                                await this.didaSyncInstance.syncToDidaList();
-                            }, 1000);
+                        // 处理滴答清单同步
+                        if (this.didaSyncInstance["mydidaSyncEnabled"] &&
+                            this.settingdata["docker-sync-auto-trigger-dida"]) {
+                                setTimeout(async () => {
+                                    await this.didaSyncInstance.syncToDidaList();
+                                }, 1000);
+                        }
                     }
 
-                    // 处理 Docker 同步
+                    // 处理 Docker 同步（浏览器环境不执行）
                     if (this.dockerSyncEnabled) {
                         const currentHost = window.location.host;
+                        const isBrowser = getFrontend() === 'browser-desktop';
 
-                        if (url.includes(currentHost)) {
+                        if (isBrowser) {
+                            console.log("[Docker同步] 浏览器环境，跳过执行");
+                        } else if (url.includes(currentHost)) {
                             console.log("[Docker同步] 当前主机已包含在同步URL中，取消感知");
                         } else {
                             console.log("[Docker同步] 延迟1秒后执行Docker同步");

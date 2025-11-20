@@ -23,6 +23,7 @@ const cellUpdateQueue: Array<{
     value: any;
     type: string;
     endtime?: string;
+    queuePriority?: string;
     resolve: (value: any) => void;
     reject: (reason: any) => void;
 }> = [];
@@ -1100,7 +1101,7 @@ export async function handleDidaListEvent(avID: string, blockId: string, itemID:
         // 清除之前的计时器
         clearTimeout(didaEventDebounceTimer);
 
-        console.log('设置同步定时器，10秒后执行');
+        console.log('设置同步定时器，30秒后执行');
         didaEventDebounceTimer = setTimeout(async () => {
             try {
                 console.log('开始执行同步操作');
@@ -1109,7 +1110,7 @@ export async function handleDidaListEvent(avID: string, blockId: string, itemID:
             } catch (error) {
                 console.error('同步操作失败:', error);
             }
-        }, 10000);
+        }, 30000);
 
         // 检查是否为滴答清单数据库
         const didaDbId = settingdata['cal-dida-db-id'];
@@ -1376,7 +1377,7 @@ export async function addAttributeViewKey(
 ): Promise<void> {
     // if (keyType == 'block') {
     //     showMessage('主键键不支持添加，请自行修改主键名称为：事件', -1, 'error');
-        
+
     //     return;
     // }
     return await avManager.addAttributeViewKey(avID, {

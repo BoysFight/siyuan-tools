@@ -1107,7 +1107,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             primaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, allDayKeyID, itemID, false, "checkbox", undefined, 'high'));
         }
         // 设置自定义属性
-        api.setBlockAttrs(direct.directid, { 'custom-st-event': statusMap[status] });
+        // api.setBlockAttrs(direct.directid, { 'custom-st-event': statusMap[status] });
 
         // 后台：优先级、主事件标记、父子关系、项目关系
         secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
@@ -1118,7 +1118,7 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         // 先等待优先更新完成，保障关键字段就绪
         await Promise.all(primaryUpdates);
         sy.showMessage('已添加事件', 2000, "info", "1");
-        refreshKanban();
+        // refreshKanban();
         // setTimeout(() => calendar?.refetchEvents(), 1000);
         // 其余后台异步执行，不阻塞交互
         void Promise.all(secondaryUpdates).catch(err => console.warn("后台属性更新失败", err));
