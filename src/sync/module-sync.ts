@@ -63,7 +63,7 @@ export class M_sync {
                         const currentPort = window.location.port;
                         const reason = `当前端口 ${currentPort} 不是主窗口(6806或16806)且不是Windows桌面客户端`;
                         console.log(`[同步跳过] ${reason}`);
-                        showMessage(`同步操作已跳过：${reason}`, 3000);
+                        // showMessage(`同步操作已跳过：${reason}`, 3000);
                     } else {
                         // 已通过前面的条件检查，现在可以执行同步操作
                         console.log('[同步执行] 当前是主窗口或桌面客户端，开始执行同步操作');
@@ -120,6 +120,7 @@ export class M_sync {
             const state = await api.URLsync(url, token);
             if (state) {
                 console.log("docker感知成功");
+                showMessage("docker同步感知成功");
             } else {
                 showMessage("docker同步感知失败");
             }
