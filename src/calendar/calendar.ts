@@ -736,7 +736,8 @@ export async function run(
                 try {
                     const showLifelogEvents = filterViewId.includes('lifelog');
                     if (showLifelogEvents) {
-                        const lifelogEvents = await LifelogView.getLifelogEvents(info.start, info.end);
+                        // 有更新时绕过缓存获取最新数据；否则使用缓存以降低计算开销
+                        const lifelogEvents = await LifelogView.getLifelogEventsCached(info.start, info.end);
                         console.log('是否显示 Lifelog 事件:', showLifelogEvents);
                         console.log('当前过滤视图:', filterViewId);
                         console.log('当前视图类型:', calendar.view.type);

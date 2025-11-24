@@ -1,5 +1,6 @@
 import { Plugin } from "siyuan";
 import { getBlockAttrs, setBlockAttrs, getHPathByID } from "../api/api";  // 修改导入
+import { LifelogView } from "../calendar/lifelog-view";
 
 // 常量定义
 const LIFELOG_PREFIX = 'custom-lifelog-';
@@ -273,6 +274,14 @@ export class M_lifelog {
     private async updateBlockAttrs(updates: any[]) {
         for (const update of updates) {
             await setBlockAttrs(update.id, update.attrs);
+        }
+        // 有变化时，主动清理 Lifelog 事件缓存，确保视图下一次刷新拿到最新数据
+        if (updates && updates.length) {
+            try {
+                LifelogView.markDirty();
+            } catch (err) {
+                this.warn('LifeLog: 清理缓存失败', err);
+            }
         }
     }
 }

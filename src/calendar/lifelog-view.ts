@@ -4,6 +4,30 @@ import { ATTRS } from '../lifelog/module-lifelog';
 
 export class LifelogView {
     private static lastProcessTime: number = 0;
+    // 简易事件缓存，避免频繁执行重算；TTL 60s
+    private static eventsCache: Map<string, { events: EventInput[], timestamp: number }> = new Map();
+    private static readonly CACHE_TTL_MS = 60 * 1000;
+    // 数据变更标志位：当模块检测到 Lifelog 数据更新时置位
+    private static dirty: boolean = false;
+    // 主动清理缓存（供外部调用：有数据变更时立即失效）
+    static clearCache(): void {
+        this.eventsCache.clear();
+    }
+
+    // 标记数据已更新（置位并清理缓存）
+    static markDirty(): void {
+        this.dirty = true;
+    }
+
+    // 查询数据是否处于“已更新”状态
+    static isDirty(): boolean {
+        return this.dirty;
+    }
+
+    // 清除“已更新”状态（在重新获取最新数据后调用）
+    static clearDirty(): void {
+        this.dirty = false;
+    }
     /**
      * 处理块的属性
      * @param blockId 块ID
@@ -202,5 +226,24 @@ export class LifelogView {
             console.error('获取 Lifelog 事件失败:', error);
             return [];
         }
+    }
+
+    /**
+     * 获取 Lifelog 事件（带缓存）。在缓存有效期内返回缓存，超时则重新计算。
+     */
+    static async getLifelogEventsCached(start?: Date, end?: Date): Promise<EventInput[]> {
+        if (!start || !end) return [];
+        const key = `${start.toISOString()}_${end.toISOString()}`;
+        const now = Date.now();
+        if (!this.isDirty() ) {
+            const cached = this.eventsCache.get(key);
+            if (cached && (now - cached.timestamp) < this.CACHE_TTL_MS) {
+                return cached.events;
+            }
+        }
+        const events = await this.getLifelogEvents(start, end);
+        this.eventsCache.set(key, { events, timestamp: now });
+        this.clearDirty();
+        return events;
     }
 }
