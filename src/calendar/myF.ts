@@ -1059,7 +1059,9 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
             const secondaryUpdates: Promise<any>[] = [];
             // 关系类更新
             secondaryUpdates.push(updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue));
-            secondaryUpdates.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+            if (["Epic-", "Feature-", "Story-"].some(prefix => (title || "").startsWith(prefix))) {
+                secondaryUpdates.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+            }
 
             await Promise.all(secondaryUpdates);
             // 滴答更新
@@ -1113,7 +1115,9 @@ export async function createEventInDatabase(//OK:加一个是否刷新日历的�
         secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, priorityKeyID, itemID, [{ content: "无" }], "select"));
         secondaryUpdates.push(api.updateAttrViewCell_pro(direct.directid, to_db_id, checkboxKeyID, itemID, ismain, "checkbox"));
         secondaryUpdates.push(updateParentChildRelation(direct.directid, itemID, to_db_id, viewValue));
-        secondaryUpdates.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+        if (["Epic-", "Feature-", "Story-"].some(prefix => (title || "").startsWith(prefix))) {
+            secondaryUpdates.push(updateProjectRelation(direct.directid, itemID, to_db_id, viewValue));
+        }
 
         // 先等待优先更新完成，保障关键字段就绪
         await Promise.all(primaryUpdates);

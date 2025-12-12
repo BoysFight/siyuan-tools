@@ -778,7 +778,10 @@ async function handleStatusChange(Fr_event, parentEl) {
     );
 
     const to_db_id = Fr_event.extendedProps.rootid;
-    await updateProjectRelation(Fr_event.extendedProps.blockId, Fr_event.extendedProps.itemID, to_db_id, viewValue);
+    const evtTitle = Fr_event.title || "";
+    if (["Epic-", "Feature-", "Story-"].some(prefix => evtTitle.startsWith(prefix))) {
+        await updateProjectRelation(Fr_event.extendedProps.blockId, Fr_event.extendedProps.itemID, to_db_id, viewValue);
+    }
 
     logDebug(`${Fr_event.title} 状态更改为 ${newcategory}`);
 }

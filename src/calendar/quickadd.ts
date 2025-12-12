@@ -168,15 +168,19 @@ export function runblockdata_for_note(content: string): string {
 }
 
 export function runblockdata_for_title(content: string): string {
-    // 匹配包含"@描述"的文本行
     const notePattern = /([^\n]+)@日程/;
     const noteMatch = content.match(notePattern);
-
     if (noteMatch && noteMatch[1]) {
-        // 返回删除了"@描述"的文本内容，并去除首尾空格
         return noteMatch[1].trim();
     }
-
+    const embedTitleMatch = content.match(/\(\([\s\S]*?'([^']+)'\)\)/);
+    if (embedTitleMatch && embedTitleMatch[1]) {
+        return embedTitleMatch[1].trim();
+    }
+    const checkboxLineMatch = content.match(/^[ \t]*[-*]\s*(?:\{:[^}]*\}\s*)?\[\s*(?:x|X)?\s*\]\s*(.+)$/m);
+    if (checkboxLineMatch && checkboxLineMatch[1]) {
+        return checkboxLineMatch[1].trim();
+    }
     return '';
 }
 
