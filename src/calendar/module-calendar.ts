@@ -486,9 +486,19 @@ export class M_calendar {
                 }
 
                 // 获取当前文档标题元素（参考adddatabase.js的方式）
-                const titleEl = currentProtyle?.querySelector('.protyle-title') || document.querySelector('.protyle-title');
-                const titleInputEl = titleEl?.querySelector('.protyle-title__input');
-                const docTitle = titleInputEl?.innerText || '';
+                let docTitle = '';
+                const isMobile = front === "browser-mobile" || front === "mobile";
+
+                if (isMobile) {
+                    // 移动设备上使用 toolbar__title 元素
+                    const toolbarTitleEl = document.querySelector('#toolbarName.toolbar__title');
+                    docTitle = toolbarTitleEl?.value || toolbarTitleEl?.innerText || '';
+                } else {
+                    // 桌面设备上使用原来的方式
+                    const titleEl = currentProtyle?.querySelector('.protyle-title') || document.querySelector('.protyle-title');
+                    const titleInputEl = titleEl?.querySelector('.protyle-title__input');
+                    docTitle = titleInputEl?.innerText || '';
+                }
 
                 console.log('当前文档标题:', docTitle); // 添加日志
 
@@ -504,8 +514,8 @@ export class M_calendar {
                 console.log('最终使用的初始日期:', initialDate); // 添加日志
 
                 if (front == "browser-mobile" || front == "mobile") {
-                    console.log('调用openRiChengViewDialog(true, "", "dayGridMonth",', initialDate, ')'); // 添加日志
-                    await this.openRiChengViewDialog(true, "", "dayGridMonth", initialDate);
+                    console.log('调用openRiChengViewDialog(true, "", "timeGridDay",', initialDate, ')'); // 添加日志
+                    await this.openRiChengViewDialog(true, "", "timeGridDay", initialDate);
                 } else {
                     console.log('调用openRiChengViewDialog(false, "", "timeGridWeek",', initialDate, ')'); // 添加日志
                     await this.openRiChengViewDialog(false, "", "timeGridWeek", initialDate);
