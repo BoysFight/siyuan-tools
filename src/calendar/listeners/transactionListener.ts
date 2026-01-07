@@ -23,9 +23,21 @@ export function registerTransactionListener(plugin: steveTools, M_calendar: M_ca
     const op: WsOp | undefined = msg?.data?.[0]?.doOperations?.[0];
     if (!op) return;
     const action = op.action;
-    if (action === 'updateAttrs' || action === 'updateAttrViewCell') {
-      M_calendar.avButton();
-      refreshKanban();
+
+    // 辅助函数：检查数据中是否包含 custom-lifelog- 开头的属性
+    const containsLifelogAttrs = (data: any): boolean => {
+      if (!data) return false;
+      // 检查 new 或 old 中是否有 custom-lifelog- 开头的属性
+      const newAttrs = data.new || {};
+      const oldAttrs = data.old || {};
+      return Object.keys(newAttrs).some(key => key.startsWith('custom-lifelog-')) ||
+             Object.keys(oldAttrs).some(key => key.startsWith('custom-lifelog-'));
+    };
+    if (action === 'updateAttrs' && containsLifelogAttrs(op.data)) {
+        refreshKanban();
+    }
+
+    if (action === 'updateAttrViewCell')  {
       if (op.avID && op?.data?.mSelect?.[0]?.content && op.rowID && op.keyID) {
         if (M_calendar.av_ids && M_calendar.av_ids.map(i => i.id).includes(op.avID)) {
           try {
@@ -43,6 +55,8 @@ export function registerTransactionListener(plugin: steveTools, M_calendar: M_ca
           } catch (err) {
             console.error('状态列变化处理失败', err);
           }
+        M_calendar.avButton();
+        refreshKanban();
         }
       }
     }
