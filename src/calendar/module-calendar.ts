@@ -504,8 +504,8 @@ export class M_calendar {
                 console.log('最终使用的初始日期:', initialDate); // 添加日志
 
                 if (front == "browser-mobile" || front == "mobile") {
-                    console.log('调用openRiChengViewDialog(true, "", "timeGridWeek",', initialDate, ')'); // 添加日志
-                    await this.openRiChengViewDialog(true, "", "timeGridWeek", initialDate);
+                    console.log('调用openRiChengViewDialog(true, "", "dayGridMonth",', initialDate, ')'); // 添加日志
+                    await this.openRiChengViewDialog(true, "", "dayGridMonth", initialDate);
                 } else {
                     console.log('调用openRiChengViewDialog(false, "", "timeGridWeek",', initialDate, ')'); // 添加日志
                     await this.openRiChengViewDialog(false, "", "timeGridWeek", initialDate);
@@ -798,7 +798,7 @@ export class M_calendar {
         }, 500); // 延迟 500 毫秒
     }
 
-    async openRiChengViewDialog(isMobile: boolean = false, viewID = "", initialView = "timeGridWeek", initialDate?: string) {
+    async openRiChengViewDialog(isMobile: boolean = false, viewID = "", initialView = "dayGridMonth", initialDate?: string) {
 
         const id = new Date().getTime().toString();
         let calendar: any;
@@ -817,10 +817,10 @@ export class M_calendar {
         setTimeout(async () => {
             if (viewID) {
                 // 正确的参数顺序：id, initialView, S_viewID, cleft, cright, ccenter, elementca, initialDate
-                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle statsButton', undefined, undefined, undefined, initialDate);
+                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle refreshButton', undefined, undefined, undefined, initialDate);
             } else {
                 // 正确的参数顺序：id, initialView, S_viewID, cleft, cright, ccenter, elementca, initialDate
-                calendar = await run(id, initialView, undefined, 'prev,next today lifelogToggle statsButton', undefined, undefined, undefined, initialDate);
+                calendar = await run(id, initialView, undefined, 'prev,next today lifelogToggle refreshButton', undefined, undefined, undefined, initialDate);
             }
         }, 100);
     }
