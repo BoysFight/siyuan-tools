@@ -1,17 +1,34 @@
 import { EventInput } from '@fullcalendar/core';
 import { getBlockAttrs, sql, getBlockKramdown, setBlockAttrs } from '../api/api';
 import { ATTRS } from '../lifelog/module-lifelog';
+import { showMessage } from "siyuan";
 
 export class LifelogView {
     private static lastProcessTime: number = 0;
-    // 简易事件缓存，避免频繁执行重算；TTL 60s
-    private static eventsCache: Map<string, { events: EventInput[], timestamp: number }> = new Map();
+    // 添加以下两行记录上次的start和end日期
+    private static lastStartDate?: Date;
+    private static lastEndDate?: Date;
+
+    // 改进：按天存储缓存，键为日期字符串（YYYY/MM/DD）
+    private static dayEventsCache: Map<string, { events: EventInput[], timestamp: number }> = new Map();
     private static readonly CACHE_TTL_MS = 60 * 1000;
+
     // 数据变更标志位：当模块检测到 Lifelog 数据更新时置位
     private static dirty: boolean = false;
+
     // 主动清理缓存（供外部调用：有数据变更时立即失效）
     static clearCache(): void {
-        this.eventsCache.clear();
+        this.dayEventsCache.clear();
+    }
+
+    // 添加自动清理过期缓存的方法
+    private static cleanupExpiredCache(): void {
+        const now = Date.now();
+        for (const [dateKey, cached] of this.dayEventsCache.entries()) {
+            if (now - cached.timestamp > this.CACHE_TTL_MS) {
+                this.dayEventsCache.delete(dateKey);
+            }
+        }
     }
 
     // 标记数据已更新（置位并清理缓存）
@@ -112,7 +129,8 @@ export class LifelogView {
             needsUpdate[ATTRS.updated] = now;
             await setBlockAttrs(blockId, needsUpdate);
             Object.assign(relevantAttrs, needsUpdate);
-            console.log(`已更新块 ${blockId} 的属性:`, needsUpdate);
+            console.log(`修正块 ${blockId} 的属性:`, needsUpdate);
+            showMessage(`已修正lifelog块 ${blockId} 的属性,详见console.`, -1, 'info');
         }
 
         return { relevantAttrs, references };
@@ -123,15 +141,32 @@ export class LifelogView {
                 return [];
             }
 
+            // 添加 daydiff 检查，如果大于 32 天则不输出 lifelog 月视图和年视图不显示Lifelog
+            const daysDiff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysDiff > 32) {
+                console.log(`日期范围超过32天（${daysDiff}天），不输出 lifelog 事件`);
+                return [];
+            }
+
             const events: EventInput[] = [];
             const currentDate = new Date(start);
             let lastDayLastEventEndTime = '23:59:59';  // 默认起始时间
 
             const now = Date.now();
             const timeDiff = now - LifelogView.lastProcessTime;
-            // 计算日期间隔
-            const daysDiff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-            const shouldUpdate = daysDiff === 1 && timeDiff >= 30*1000; // 30s
+
+            // 检测start或end是否有变化
+            const isStartChanged = LifelogView.lastStartDate ? LifelogView.lastStartDate.getTime() !== start.getTime() : true;
+            const isEndChanged = LifelogView.lastEndDate ? LifelogView.lastEndDate.getTime() !== end.getTime() : true;
+            const hasDateRangeChanged = isStartChanged || isEndChanged;
+
+            // 修改shouldUpdate条件，当日期范围变化时忽略30秒限制
+            const shouldUpdate = (daysDiff === 1 &&  (timeDiff >= 30*1000 || hasDateRangeChanged));
+
+            // 更新上次的start和end日期
+            LifelogView.lastStartDate = new Date(start);
+            LifelogView.lastEndDate = new Date(end);
+
             // 处理块的属性，默认不进行属性对比修改
             if (shouldUpdate) {
                 LifelogView.lastProcessTime = now;
@@ -141,85 +176,97 @@ export class LifelogView {
             while (currentDate <= end) {
                 const dateStr = currentDate.toISOString().split('T')[0].replace(/-/g, '/');
 
-                // 构建当天的 SQL 查询语句
-                const blockIdsQuery = `
-                    SELECT DISTINCT block_id
-                    FROM attributes
-                    WHERE name = '${ATTRS.date}' AND value = '${dateStr}'
-                `;
+                // 检查当天是否已有缓存
+                const cachedDayEvents = this.dayEventsCache.get(dateStr);
+                if (cachedDayEvents && (now - cachedDayEvents.timestamp) < this.CACHE_TTL_MS && !this.isDirty() && !shouldUpdate) {
+                    // 如果当天有缓存且未过期，直接使用缓存的事件
+                    events.push(...cachedDayEvents.events);
+                } else {
+                    // 构建当天的 SQL 查询语句
+                    const blockIdsQuery = `
+                        SELECT DISTINCT block_id
+                        FROM attributes
+                        WHERE name = '${ATTRS.date}' AND value = '${dateStr}'
+                    `;
 
-                const blockIdsResult = await sql(blockIdsQuery);
-                const blockIds = blockIdsResult.map((item: any) => item.block_id);
+                    const blockIdsResult = await sql(blockIdsQuery);
+                    const blockIds = blockIdsResult.map((item: any) => item.block_id);
 
-                if (blockIds.length === 0) {
-                    // 推进到下一天
-                    currentDate.setDate(currentDate.getDate() + 1);
-                    continue;
-                }
-
-                const groupedData = new Map<string, any>();
-                for (const blockId of blockIds) {
-                    const { relevantAttrs, references } = await LifelogView.processBlockAttributes(blockId, dateStr, { compareAndUpdate: shouldUpdate });
-                    groupedData.set(blockId, { ...relevantAttrs, references });
-                }
-
-                const items = Array.from(groupedData.entries())
-                   .filter(([_, data]) => data[ATTRS.time] && data[ATTRS.date])
-                   .sort((a, b) => a[1][ATTRS.time].localeCompare(b[1][ATTRS.time]));
-
-                for (let i = 0; i < items.length; i++) {
-                    const [blockId, data] = items[i];
-                    const endTime = data[ATTRS.time];
-                    let eventStartTime, eventStartDate;
-
-                    if (i === 0) {
-                        eventStartTime = lastDayLastEventEndTime;
-                        // 如果是当天第一个事件且开始时间是前一天的结束时间
-                        // 则需要使用前一天的日期
-                        const prevDate = new Date(currentDate);
-                        prevDate.setDate(prevDate.getDate() - 1);
-                        eventStartDate = prevDate.toISOString().split('T')[0].replace(/-/g, '/');
-                    } else {
-                        eventStartTime = items[i - 1][1][ATTRS.time];
-                        eventStartDate = dateStr;
+                    if (blockIds.length === 0) {
+                        // 推进到下一天
+                        currentDate.setDate(currentDate.getDate() + 1);
+                        continue;
                     }
 
-                    const formattedStartDate = eventStartDate.replace(/\//g, '-');
-                    const formattedEndDate = dateStr.replace(/\//g, '-');
+                    const groupedData = new Map<string, any>();
+                    for (const blockId of blockIds) {
+                        const { relevantAttrs, references } = await LifelogView.processBlockAttributes(blockId, dateStr, { compareAndUpdate: shouldUpdate });
+                        groupedData.set(blockId, { ...relevantAttrs, references });
+                    }
 
-                    const [startYear, startMonth, startDay] = formattedStartDate.split('-').map(Number);
-                    const [endYear, endMonth, endDay] = formattedEndDate.split('-').map(Number);
-                    const [startHour, startMinute] = eventStartTime.split(':').map(Number);
-                    const [endHour, endMinute] = endTime.split(':').map(Number);
+                    const items = Array.from(groupedData.entries())
+                       .filter(([_, data]) => data[ATTRS.time] && data[ATTRS.date])
+                       .sort((a, b) => a[1][ATTRS.time].localeCompare(b[1][ATTRS.time]));
 
-                    // 使用已解析的引用数据
+                    // 创建当天事件的临时数组用于缓存
+                    const dayEvents = [];
 
-                    const eventData = {
-                        id: blockId,
-                        title: `${data[ATTRS.type]}: ${data[ATTRS.content]}`,
-                        start: new Date(startYear, startMonth - 1, startDay, startHour, startMinute),
-                        end: new Date(endYear, endMonth - 1, endDay, endHour, endMinute),
-                        allDay: false,
-                        extendedProps: {
-                            type: 'lifelog',
-                            logType: data[ATTRS.type],
-                            content: data[ATTRS.content],
-                            blockId: blockId,
-                            references: data.references,
+                    for (let i = 0; i < items.length; i++) {
+                        const [blockId, data] = items[i];
+                        const endTime = data[ATTRS.time];
+                        let eventStartTime, eventStartDate;
+
+                        if (i === 0) {
+                            eventStartTime = lastDayLastEventEndTime;
+                            // 如果是当天第一个事件且开始时间是前一天的结束时间
+                            // 则需要使用前一天的日期
+                            const prevDate = new Date(currentDate);
+                            prevDate.setDate(prevDate.getDate() - 1);
+                            eventStartDate = prevDate.toISOString().split('T')[0].replace(/-/g, '/');
+                        } else {
+                            eventStartTime = items[i - 1][1][ATTRS.time];
+                            eventStartDate = dateStr;
                         }
-                    };
 
-                    events.push(eventData);
+                        const formattedStartDate = eventStartDate.replace(/\//g, '-');
+                        const formattedEndDate = dateStr.replace(/\//g, '-');
+
+                        const [startYear, startMonth, startDay] = formattedStartDate.split('-').map(Number);
+                        const [endYear, endMonth, endDay] = formattedEndDate.split('-').map(Number);
+                        const [startHour, startMinute] = eventStartTime.split(':').map(Number);
+                        const [endHour, endMinute] = endTime.split(':').map(Number);
+
+                        // 使用已解析的引用数据
+
+                        const eventData = {
+                            id: blockId,
+                            title: `${data[ATTRS.type]}: ${data[ATTRS.content]}`,
+                            start: new Date(startYear, startMonth - 1, startDay, startHour, startMinute),
+                            end: new Date(endYear, endMonth - 1, endDay, endHour, endMinute),
+                            allDay: false,
+                            extendedProps: {
+                                type: 'lifelog',
+                                logType: data[ATTRS.type],
+                                content: data[ATTRS.content],
+                                blockId: blockId,
+                                references: data.references,
+                            }
+                        };
+
+                        events.push(eventData);
+                        dayEvents.push(eventData); // 同时添加到当天事件数组
+                    }
+
+                    // 将当天的事件存入缓存
+                    this.dayEventsCache.set(dateStr, { events: dayEvents, timestamp: now });
                 }
 
-                // 更新lastDayLastEventEndTime为当天最后一个事件的结束时间
-                // 如果当天没有事件，保持上一次的lastDayLastEventEndTime不变
-                if (items.length > 0) {
-                    lastDayLastEventEndTime = items[items.length - 1][1][ATTRS.time];
-                }
-
+                // 推进到下一天
                 currentDate.setDate(currentDate.getDate() + 1);
             }
+
+            // 清理过期缓存
+            this.cleanupExpiredCache();
 
             return events;
         } catch (error) {
@@ -233,17 +280,14 @@ export class LifelogView {
      */
     static async getLifelogEventsCached(start?: Date, end?: Date): Promise<EventInput[]> {
         if (!start || !end) return [];
-        const key = `${start.toISOString()}_${end.toISOString()}`;
-        const now = Date.now();
-        if (!this.isDirty() ) {
-            const cached = this.eventsCache.get(key);
-            if (cached && (now - cached.timestamp) < this.CACHE_TTL_MS) {
-                return cached.events;
-            }
+        if (this.isDirty()) {
+            this.clearCache();
         }
+        // 直接调用改造后的getLifelogEvents函数，它现在内置了按天缓存的逻辑
         const events = await this.getLifelogEvents(start, end);
-        this.eventsCache.set(key, { events, timestamp: now });
+        // 清除脏标记
         this.clearDirty();
+
         return events;
     }
 }
