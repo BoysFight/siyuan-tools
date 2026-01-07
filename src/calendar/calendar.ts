@@ -66,6 +66,7 @@ export async function run(
     cright = 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridThreeDays,timeGridDay,weekkanban,kanban,yearkanban,priorityQuadrant,planButton',
     ccenter = 'title',
     elementca?: any,
+    initialDate?: string
 ) {
     // 允许用户通过设置覆盖 initialView 与 cright（当使用的是内置默认或未传入时）
     try {
@@ -192,6 +193,7 @@ export async function run(
             priorityQuadrant,
         ],
         initialView: initialView,
+        initialDate: initialDate,
         navLinks: true,
         dayMaxEvents: true,
         locale: zhCnLocale,

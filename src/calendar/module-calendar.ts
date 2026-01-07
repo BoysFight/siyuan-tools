@@ -460,13 +460,57 @@ export class M_calendar {
                 button.innerHTML = '<svg class="item__graphic"><use xlink:href="#iconCalendar"></use></svg>';
 
                 // 添加点击事件监听器
-                button.addEventListener('click', async () => {
-                    if (front == "browser-mobile" || front == "mobile") {
-                        await this.openRiChengViewDialog(true);
-                    } else {
-                        await this.openRiChengViewDialog(false);
+            button.addEventListener('click', async () => {
+                // 获取当前文档的protyle
+                const getCurrentProtyle = () => {
+                    // 优先获取当前焦点所在的编辑器
+                    const activeElement = document.activeElement;
+                    const focusedProtyle = activeElement?.closest('.protyle:not(.fn__none)');
+                    if (focusedProtyle) {
+                        return focusedProtyle;
                     }
-                });
+
+                    // 其次获取活动窗口的编辑器
+                    const activeWndProtyle = document.querySelector('[data-type="wnd"].layout__wnd--active .protyle:not(.fn__none)');
+                    if (activeWndProtyle) {
+                        return activeWndProtyle;
+                    }
+
+                    // 最后获取任意可见编辑器
+                    return document.querySelector('[data-type="wnd"] .protyle:not(.fn__none)');
+                };
+
+                const currentProtyle = getCurrentProtyle();
+                if (!currentProtyle) {
+                    console.error('未找到当前文档的编辑器');
+                }
+
+                // 获取当前文档标题元素（参考adddatabase.js的方式）
+                const titleEl = currentProtyle?.querySelector('.protyle-title') || document.querySelector('.protyle-title');
+                const titleInputEl = titleEl?.querySelector('.protyle-title__input');
+                const docTitle = titleInputEl?.innerText || '';
+
+                console.log('当前文档标题:', docTitle); // 添加日志
+
+                // 从标题中提取日期（假设标题格式为 2024-12-01）
+                let initialDate;
+                const dateRegex = /^\d{4}-\d{2}-\d{2}/;
+                const dateMatch = docTitle.match(dateRegex);
+                if (dateMatch) {
+                    initialDate = dateMatch[0];
+                    console.log('从标题提取到的日期:', initialDate); // 添加日志
+                }
+
+                console.log('最终使用的初始日期:', initialDate); // 添加日志
+
+                if (front == "browser-mobile" || front == "mobile") {
+                    console.log('调用openRiChengViewDialog(true, "", "timeGridWeek",', initialDate, ')'); // 添加日志
+                    await this.openRiChengViewDialog(true, "", "timeGridWeek", initialDate);
+                } else {
+                    console.log('调用openRiChengViewDialog(false, "", "timeGridWeek",', initialDate, ')'); // 添加日志
+                    await this.openRiChengViewDialog(false, "", "timeGridWeek", initialDate);
+                }
+            });
 
                 // 将按钮插入到 more 按钮之前
                 if (moreButton) {
@@ -754,7 +798,7 @@ export class M_calendar {
         }, 500); // 延迟 500 毫秒
     }
 
-    async openRiChengViewDialog(isMobile: boolean = false, viewID = "", initialView = "timeGridWeek") {
+    async openRiChengViewDialog(isMobile: boolean = false, viewID = "", initialView = "timeGridWeek", initialDate?: string) {
 
         const id = new Date().getTime().toString();
         let calendar: any;
@@ -772,9 +816,11 @@ export class M_calendar {
 
         setTimeout(async () => {
             if (viewID) {
-                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle statsButton');
+                // 正确的参数顺序：id, initialView, S_viewID, cleft, cright, ccenter, elementca, initialDate
+                calendar = await run(id, initialView, viewID, 'prev,next today lifelogToggle statsButton', undefined, undefined, undefined, initialDate);
             } else {
-                calendar = await run(id, initialView);
+                // 正确的参数顺序：id, initialView, S_viewID, cleft, cright, ccenter, elementca, initialDate
+                calendar = await run(id, initialView, undefined, 'prev,next today lifelogToggle statsButton', undefined, undefined, undefined, initialDate);
             }
         }, 100);
     }
