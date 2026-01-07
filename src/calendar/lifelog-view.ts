@@ -11,7 +11,7 @@ export class LifelogView {
 
     // 改进：按天存储缓存，键为日期字符串（YYYY/MM/DD）
     private static dayEventsCache: Map<string, { events: EventInput[], timestamp: number }> = new Map();
-    private static readonly CACHE_TTL_MS = 60 * 1000;
+    private static readonly CACHE_TTL_MS = 60 * 1000 * 5;
 
     // 数据变更标志位：当模块检测到 Lifelog 数据更新时置位
     private static dirty: boolean = false;
@@ -130,7 +130,7 @@ export class LifelogView {
             await setBlockAttrs(blockId, needsUpdate);
             Object.assign(relevantAttrs, needsUpdate);
             console.log(`修正块 ${blockId} 的属性:`, needsUpdate);
-            showMessage(`已修正lifelog块 ${blockId} 的属性,详见console.`, -1, 'info');
+            showMessage(`已更新lifelog块 ${processedContent.trim()} 的属性,详见console.`, 3000, 'info');
         }
 
         return { relevantAttrs, references };
