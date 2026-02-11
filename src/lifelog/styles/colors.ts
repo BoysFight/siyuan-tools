@@ -98,6 +98,26 @@ export const lifelogColors = {
         background: 'rgba(211, 211, 211, 0.15)',
         text: 'var(--b3-theme-on-background)'
     },
+    '出行': {
+        border: 'rgb(211, 211, 211)',
+        background: 'rgba(211, 211, 211, 0.15)',
+        text: 'var(--b3-theme-on-background)'
+    },
+    '琐事': {
+        border: 'rgb(211, 211, 211)',
+        background: 'rgba(211, 211, 211, 0.15)',
+        text: 'var(--b3-theme-on-background)'
+    },
+    '睡眠': {
+        border: 'rgb(106, 90, 205)',
+        background: 'rgba(106, 90, 205, 0.15)',
+        text: 'var(--b3-theme-on-background)'
+    },
+    '健康': {
+        border: 'rgb(60, 179, 113)',
+        background: 'rgba(60, 179, 113, 0.15)',
+        text: 'var(--b3-theme-on-background)'
+    },
     '学习': {
         border: 'rgb(144, 238, 144)',
         background: 'rgba(144, 238, 144, 0.15)',
@@ -162,7 +182,7 @@ export const lifelogColors = {
         border: 'rgb(156, 123, 85)',
         background: 'rgba(156, 123, 85, 0.15)',
         text: 'var(--b3-theme-on-background)'
-    }
+    },
 };
 
 
