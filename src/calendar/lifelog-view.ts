@@ -150,7 +150,9 @@ export class LifelogView {
 
             const events: EventInput[] = [];
             const currentDate = new Date(start);
-            let lastDayLastEventEndTime = '23:59:59';  // 默认起始时间
+            // 上一日的最后一个事件结束时间与是否有数据标记
+            let lastDayLastEventEndTime: string | null = null;
+            let hasPrevDayData = false;
 
             const now = Date.now();
             const timeDiff = now - LifelogView.lastProcessTime;
@@ -193,6 +195,9 @@ export class LifelogView {
                     const blockIds = blockIdsResult.map((item: any) => item.block_id);
 
                     if (blockIds.length === 0) {
+                        // 前一天无数据，则不进行跨天衔接
+                        hasPrevDayData = false;
+                        lastDayLastEventEndTime = null;
                         // 推进到下一天
                         currentDate.setDate(currentDate.getDate() + 1);
                         continue;
@@ -217,12 +222,17 @@ export class LifelogView {
                         let eventStartTime, eventStartDate;
 
                         if (i === 0) {
-                            eventStartTime = lastDayLastEventEndTime;
-                            // 如果是当天第一个事件且开始时间是前一天的结束时间
-                            // 则需要使用前一天的日期
-                            const prevDate = new Date(currentDate);
-                            prevDate.setDate(prevDate.getDate() - 1);
-                            eventStartDate = prevDate.toISOString().split('T')[0].replace(/-/g, '/');
+                            if (hasPrevDayData && lastDayLastEventEndTime) {
+                                eventStartTime = lastDayLastEventEndTime;
+                                // 使用前一天的日期
+                                const prevDate = new Date(currentDate);
+                                prevDate.setDate(prevDate.getDate() - 1);
+                                eventStartDate = prevDate.toISOString().split('T')[0].replace(/-/g, '/');
+                            } else {
+                                // 无上一日数据，默认从当天 00:00 开始
+                                eventStartTime = '00:00';
+                                eventStartDate = dateStr;
+                            }
                         } else {
                             eventStartTime = items[i - 1][1][ATTRS.time];
                             eventStartDate = dateStr;
@@ -255,6 +265,14 @@ export class LifelogView {
 
                         events.push(eventData);
                         dayEvents.push(eventData); // 同时添加到当天事件数组
+                    }
+
+                    // 记录本日收尾信息供次日首事件使用
+                    hasPrevDayData = items.length > 0;
+                    if (hasPrevDayData) {
+                        lastDayLastEventEndTime = items[items.length - 1][1][ATTRS.time];
+                    } else {
+                        lastDayLastEventEndTime = null;
                     }
 
                     // 将当天的事件存入缓存
